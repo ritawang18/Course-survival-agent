@@ -1,26 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import {
-  createOAuthClient,
-  hydrateClient,
-  listEvents,
-  createEvent,
-  TokenSet,
-} from "@/lib/google-calendar";
+import { listEvents, createEvent } from "@/lib/google-calendar";
+import { getCalendarClient } from "@/lib/calendar-auth";
 
 export const runtime = "nodejs";
 
 /** GET /api/calendar/events?days=14 — list upcoming events */
 export async function GET(req: NextRequest) {
-  const cookieStore = await cookies();
-  const raw = cookieStore.get("gcal_tokens")?.value;
-  if (!raw) {
-    return NextResponse.json({ error: "Not connected to Google Calendar" }, { status: 401 });
+  const auth = await getCalendarClient();
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
-
-  const tokens: TokenSet = JSON.parse(raw);
-  const client = createOAuthClient();
-  hydrateClient(client, tokens);
+  const { client } = auth;
 
   const days = Number(new URL(req.url).searchParams.get("days") ?? 14);
 
@@ -37,15 +27,11 @@ export async function GET(req: NextRequest) {
  *  Body: { summary, description?, start, end, colorId? }
  */
 export async function POST(req: NextRequest) {
-  const cookieStore = await cookies();
-  const raw = cookieStore.get("gcal_tokens")?.value;
-  if (!raw) {
-    return NextResponse.json({ error: "Not connected to Google Calendar" }, { status: 401 });
+  const auth = await getCalendarClient();
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
-
-  const tokens: TokenSet = JSON.parse(raw);
-  const client = createOAuthClient();
-  hydrateClient(client, tokens);
+  const { client } = auth;
 
   const body = await req.json();
   const { summary, description, start, end, colorId } = body;

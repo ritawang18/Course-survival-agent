@@ -9,11 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
-<<<<<<< HEAD
-    "@supabase/supabase-js": "^2.103.0",
-=======
     "@anthropic-ai/sdk": "^0.88.0",
->>>>>>> 2ffc0d7 (parser+calendar partial)
+    "@supabase/supabase-js": "^2.103.0",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
     "googleapis": "^171.4.0",
