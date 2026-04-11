@@ -25,6 +25,7 @@ export interface SchedulerExam {
 
 export interface SchedulerCourse {
   id: string;
+  uuid?: string;         // DB courses.id — required to persist to study_plan
   code: string;
   name: string;
   schedule: string;      // e.g. "MWF 10:00–11:00"

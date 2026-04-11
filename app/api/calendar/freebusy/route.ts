@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import {
-  createOAuthClient,
-  hydrateClient,
-  getFreeBusy,
-  TokenSet,
-} from "@/lib/google-calendar";
+import { getFreeBusy } from "@/lib/google-calendar";
+import { getCalendarClient } from "@/lib/calendar-auth";
 
 export const runtime = "nodejs";
 
@@ -13,15 +8,11 @@ export const runtime = "nodejs";
  *  Returns free windows for the authenticated user's primary calendar.
  */
 export async function GET(req: NextRequest) {
-  const cookieStore = await cookies();
-  const raw = cookieStore.get("gcal_tokens")?.value;
-  if (!raw) {
-    return NextResponse.json({ error: "Not connected to Google Calendar" }, { status: 401 });
+  const auth = await getCalendarClient();
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
-
-  const tokens: TokenSet = JSON.parse(raw);
-  const client = createOAuthClient();
-  hydrateClient(client, tokens);
+  const { client } = auth;
 
   const { searchParams } = new URL(req.url);
   const days = Number(searchParams.get("days") ?? 7);

@@ -9,8 +9,8 @@ export type Difficulty = "easy" | "medium" | "hard";
 export interface GradingCategory {
   id: string;
   name: string;
-  weight: number; // percent
-  earned?: number; // percent score so far
+  weight: number;   // percent
+  earned?: number;  // percent score so far
 }
 
 export interface LectureModule {
@@ -30,25 +30,34 @@ export interface UploadedFile {
 }
 
 export interface AttendancePolicy {
-  maxAbsences: number;
-  penaltyPerAbsence: number; // percentage points off grade
+  attendance_allowed_misses: number;
+  penaltyPerAbsence: number;
   note: string;
 }
 
 export interface Course {
   id: string;
-  code: string;
-  name: string;
-  instructor: string;
-  school: string;
+  // ── UI-facing fields (legacy / optional after rita merge) ──
+  code?: string;
+  name?: string;
+  instructor?: string;
+  school?: string;
   color: CourseColor;
+  // ── DB-aligned fields (canonical after rita merge) ──
+  user_id?: string;
+  course_id?: string;          // text course code, e.g. "CS344" — FK to syllabus
+  course_name?: string;
+  term?: string;
+  instructor_name?: string;
+  // ── shared ──
   credits: number;
   schedule: string;
-  room: string;
-  currentGrade: number;
-  gradingWeights: GradingCategory[];
-  attendancePolicy: AttendancePolicy;
-  missedClasses: number;
+  location?: string;
+  current_grade_percent?: number;
+  attendance_missed_count: number;
+  attendance_allowed_misses: number;
+  attendancePolicy?: AttendancePolicy;
+  gradingWeights: GradingCategory[];  // from syllabus.break_down
   files: UploadedFile[];
   modules: LectureModule[];
   aiSummary: string;
@@ -59,21 +68,26 @@ export interface Course {
 
 export interface Assignment {
   id: string;
-  courseId: string;
+  course_id: string;
+  canvas_assignment_id?: string;
+  grade_component_id?: string;
   title: string;
-  description: string;
-  dueDate: string; // ISO
+  assignment_type: string;    // "exam" | "quiz" | "homework" | "lab" | "project" | "essay"
+  description?: string;
+  due_at?: string;            // ISO
+  available_from?: string;
+  available_until?: string;
+  points_possible?: number;
+  score_received?: number;
   status: AssignmentStatus;
-  priority: Priority;
-  estimatedHours: number;
-  dependencies: string[];
-  weightCategoryId?: string;
-  score?: number;
+  estimated_hours?: number;
+  importance_score?: number;
+  dependencies?: string[];
 }
 
 export interface Exam {
   id: string;
-  courseId: string;
+  course_id: string;
   title: string;
   date: string;
   location: string;
@@ -90,11 +104,11 @@ export type StudyBlockType =
 
 export interface StudyBlock {
   id: string;
-  courseId: string;
+  course_id: string;
   title: string;
-  date: string; // ISO date
-  start: string; // HH:mm
-  end: string; // HH:mm
+  date: string;       // ISO date
+  start: string;      // HH:mm
+  end: string;        // HH:mm
   type: StudyBlockType;
   difficulty?: Difficulty;
   priority?: Priority;
@@ -111,6 +125,7 @@ export interface UploadArtifact {
     deadlines: { label: string; date: string; confidence: number }[];
     weights: { name: string; percent: number; confidence: number }[];
     examDates: { label: string; date: string; confidence: number }[];
+    cutoffs: { grade: string; minPercent: number; confidence: number }[];
     attendancePolicy: { text: string; confidence: number };
   };
 }

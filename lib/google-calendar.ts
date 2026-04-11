@@ -172,26 +172,38 @@ export async function listEvents(
   }));
 }
 
-/** Create a calendar event (e.g. a study block). */
+/** Create a calendar event (e.g. a study block or exam). */
 export async function createEvent(
   client: OAuth2Client,
   event: {
     summary: string;
     description?: string;
-    start: string; // ISO datetime
-    end: string;
+    start: string;   // ISO datetime, or YYYY-MM-DD for all-day
+    end: string;     // ISO datetime, or YYYY-MM-DD for all-day
     colorId?: string; // "1"–"11"
+    allDay?: boolean; // true → uses date field instead of dateTime
+    timeZone?: string; // defaults to UTC
   }
 ): Promise<string> {
   const cal = google.calendar({ version: "v3", auth: client });
+  const tz = event.timeZone ?? "UTC";
+
+  const startField = event.allDay
+    ? { date: event.start.slice(0, 10) }
+    : { dateTime: event.start, timeZone: tz };
+
+  const endField = event.allDay
+    ? { date: event.end.slice(0, 10) }
+    : { dateTime: event.end, timeZone: tz };
+
   const resp = await cal.events.insert({
     calendarId: "primary",
     requestBody: {
       summary: event.summary,
       description: event.description,
       colorId: event.colorId,
-      start: { dateTime: event.start, timeZone: "America/Los_Angeles" },
-      end: { dateTime: event.end, timeZone: "America/Los_Angeles" },
+      start: startField,
+      end: endField,
     },
   });
   return resp.data.id!;

@@ -25,10 +25,17 @@ export interface ParsedAttendancePolicy {
   confidence: number;
 }
 
+export interface ParsedCutoff {
+  grade: string;        // "A", "A-", "B+", etc.
+  minPercent: number;   // minimum percent to achieve this grade
+  confidence: number;
+}
+
 export interface SyllabusParseResult {
   deadlines: ParsedDeadline[];
   weights: ParsedWeight[];
   examDates: ParsedExamDate[];
+  cutoffs: ParsedCutoff[];
   attendancePolicy: ParsedAttendancePolicy;
   courseCode: string | null;
   courseName: string | null;
@@ -52,6 +59,10 @@ Return ONLY a JSON object — no prose, no markdown fences. Use this exact schem
   "examDates": [
     { "label": "Midterm 1", "date": "2026-03-05T18:00:00", "confidence": 0.9 }
   ],
+  "cutoffs": [
+    { "grade": "A", "minPercent": 93, "confidence": 0.98 },
+    { "grade": "A-", "minPercent": 90, "confidence": 0.98 }
+  ],
   "attendancePolicy": {
     "text": "You may miss up to 3 lectures without penalty.",
     "maxAbsences": 3,
@@ -63,6 +74,7 @@ Return ONLY a JSON object — no prose, no markdown fences. Use this exact schem
 Rules:
 - All dates in ISO 8601. If no time specified, use 23:59:00 for deadlines and 00:00:00 for exams.
 - Weights must sum to 100 across all categories. If the syllabus gives a partial breakdown, include only what's stated.
+- cutoffs: extract grade cutoff table if present (e.g. "A: 93-100%", "B+: 87-89%"). Use the lower bound as minPercent.
 - confidence: 0.9+ = explicit in text, 0.7–0.89 = inferred, <0.7 = guessed.
 - If a field has no information, use an empty array [] or null.
 - Do NOT invent data. Only extract what is actually in the document.`;

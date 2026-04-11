@@ -25,7 +25,7 @@ import {
   InsightGenerationSchema,
   type InstructorInsight,
 } from "@/lib/schemas/insight";
-import { getServerSupabase } from "@/lib/supabase/server";
+import { getServiceClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
   // 2. Cache check (24h window, case-insensitive)
   let supabase;
   try {
-    supabase = getServerSupabase();
+    supabase = getServiceClient();
   } catch (err) {
     return errorResponse(
       "internal",

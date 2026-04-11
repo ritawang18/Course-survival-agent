@@ -1,16 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getUserFromRequest } from "@/lib/supabase/server";
+import { upsertCourseGrade } from "@/lib/db/grades";
+
+interface GradeCutoff {
+  grade: string;       // "A", "A-", "B+", etc.
+  minPercent: number;
+}
 
 interface GradingCategory {
   id: string;
   name: string;
-  weight: number;   // 0–100 percent of final grade
-  earned?: number;  // 0–100 score, undefined if not yet graded
+  weight: number;      // 0–100 percent of final grade
+  earned?: number;     // 0–100 score, undefined if not yet graded
 }
 
 interface CourseInput {
-  courseId: string;
+  courseId: string;    // DB uuid — used to persist to course_grades
   credits: number;
   gradingWeights: GradingCategory[];
+  cutoffs?: GradeCutoff[];  // from syllabus.cut_off — uses defaults if omitted
+  isPF?: boolean;
 }
 
 interface CategoryResult {
@@ -18,24 +27,24 @@ interface CategoryResult {
   name: string;
   weight: number;
   earned: number | null;
-  contribution: number | null; // (earned / 100) * weight
+  contribution: number | null;
 }
 
 interface CourseResult {
   courseId: string;
   credits: number;
-  currentGrade: number | null;       // weighted average of graded categories only
-  projectedGrade: number;            // assumes `optimisticScore` for ungraded
-  worstCaseGrade: number;            // assumes 0 for ungraded
+  currentGrade: number | null;
+  projectedGrade: number;
+  worstCaseGrade: number;
   letterGrade: string;
-  gpaPoints: number;                 // 4.0 scale
+  gpaPoints: number;
   categories: CategoryResult[];
-  ungradedWeight: number;            // total weight of ungraded categories
+  ungradedWeight: number;
 }
 
 interface SemesterResult {
-  semesterGPA: number;              // credit-weighted
-  semesterGrade: number;            // credit-weighted %
+  semesterGPA: number;
+  semesterGrade: number;
   courses: CourseResult[];
 }
 
@@ -45,10 +54,17 @@ interface SemesterResult {
  * Body:
  * {
  *   courses: CourseInput[],
- *   optimisticScore?: number   // assumed score (0–100) for ungraded work (default 85)
+ *   optimisticScore?: number   // assumed score for ungraded work (default 85)
  * }
+ *
+ * Persists results to course_grades for each course that provides a courseId.
  */
 export async function POST(req: NextRequest) {
+  const user = await getUserFromRequest(req);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const body = await req.json();
     const { courses, optimisticScore = 85 } = body as {
@@ -62,6 +78,20 @@ export async function POST(req: NextRequest) {
 
     const courseResults: CourseResult[] = courses.map((c) =>
       calculateCourse(c, optimisticScore)
+    );
+
+    // ── Persist to course_grades ──────────────────────────────────────────────
+    await Promise.all(
+      courseResults.map((result, i) => {
+        const input = courses[i];
+        return upsertCourseGrade(input.courseId, {
+          currentPercent: result.currentGrade,
+          currentLetterGrade: result.letterGrade,
+          projectedPercent: result.projectedGrade,
+          projectedLetterGrade: toLetter(result.projectedGrade, courses[i].cutoffs),
+          isPF: input.isPF,
+        });
+      })
     );
 
     const totalCredits = courseResults.reduce((s, c) => s + c.credits, 0);
@@ -88,7 +118,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── Calculation logic ─────────────────────────────────────────────────────────
 
 function calculateCourse(c: CourseInput, optimisticScore: number): CourseResult {
   const categories: CategoryResult[] = c.gradingWeights.map((g) => ({
@@ -96,16 +126,14 @@ function calculateCourse(c: CourseInput, optimisticScore: number): CourseResult 
     name: g.name,
     weight: g.weight,
     earned: g.earned ?? null,
-    contribution:
-      g.earned != null ? round((g.earned / 100) * g.weight) : null,
+    contribution: g.earned != null ? round((g.earned / 100) * g.weight) : null,
   }));
 
   const gradedCategories = categories.filter((g) => g.earned != null);
   const ungradedCategories = categories.filter((g) => g.earned == null);
   const ungradedWeight = ungradedCategories.reduce((s, g) => s + g.weight, 0);
-
-  // Current grade: weighted average of graded categories, re-normalized to their total weight
   const gradedWeight = gradedCategories.reduce((s, g) => s + g.weight, 0);
+
   const currentGrade =
     gradedWeight > 0
       ? round(
@@ -114,19 +142,17 @@ function calculateCourse(c: CourseInput, optimisticScore: number): CourseResult 
         )
       : null;
 
-  // Projected: assume optimisticScore for ungraded
   const projectedGrade = round(
     gradedCategories.reduce((s, g) => s + (g.earned! / 100) * g.weight, 0) +
       (optimisticScore / 100) * ungradedWeight
   );
 
-  // Worst case: assume 0 for ungraded
   const worstCaseGrade = round(
     gradedCategories.reduce((s, g) => s + (g.earned! / 100) * g.weight, 0)
   );
 
-  const letterGrade = toLetter(projectedGrade);
-  const gpaPoints = toGPA(projectedGrade);
+  const letterGrade = toLetter(projectedGrade, c.cutoffs);
+  const gpaPoints = toGPA(projectedGrade, c.cutoffs);
 
   return {
     courseId: c.courseId,
@@ -141,32 +167,44 @@ function calculateCourse(c: CourseInput, optimisticScore: number): CourseResult 
   };
 }
 
-function toLetter(grade: number): string {
-  if (grade >= 93) return "A";
-  if (grade >= 90) return "A-";
-  if (grade >= 87) return "B+";
-  if (grade >= 83) return "B";
-  if (grade >= 80) return "B-";
-  if (grade >= 77) return "C+";
-  if (grade >= 73) return "C";
-  if (grade >= 70) return "C-";
-  if (grade >= 67) return "D+";
-  if (grade >= 60) return "D";
+// ── Grade scale helpers ───────────────────────────────────────────────────────
+
+const DEFAULT_CUTOFFS: GradeCutoff[] = [
+  { grade: "A",  minPercent: 93 },
+  { grade: "A-", minPercent: 90 },
+  { grade: "B+", minPercent: 87 },
+  { grade: "B",  minPercent: 83 },
+  { grade: "B-", minPercent: 80 },
+  { grade: "C+", minPercent: 77 },
+  { grade: "C",  minPercent: 73 },
+  { grade: "C-", minPercent: 70 },
+  { grade: "D+", minPercent: 67 },
+  { grade: "D",  minPercent: 60 },
+];
+
+/** Convert a numeric grade to a letter using course-specific cutoffs if provided. */
+function toLetter(grade: number, cutoffs?: GradeCutoff[]): string {
+  const scale = cutoffs && cutoffs.length > 0
+    ? [...cutoffs].sort((a, b) => b.minPercent - a.minPercent)
+    : DEFAULT_CUTOFFS;
+
+  for (const cutoff of scale) {
+    if (grade >= cutoff.minPercent) return cutoff.grade;
+  }
   return "F";
 }
 
-function toGPA(grade: number): number {
-  if (grade >= 93) return 4.0;
-  if (grade >= 90) return 3.7;
-  if (grade >= 87) return 3.3;
-  if (grade >= 83) return 3.0;
-  if (grade >= 80) return 2.7;
-  if (grade >= 77) return 2.3;
-  if (grade >= 73) return 2.0;
-  if (grade >= 70) return 1.7;
-  if (grade >= 67) return 1.3;
-  if (grade >= 60) return 1.0;
-  return 0.0;
+/** Convert a numeric grade to GPA points using course-specific cutoffs if provided. */
+function toGPA(grade: number, cutoffs?: GradeCutoff[]): number {
+  const letter = toLetter(grade, cutoffs);
+  const map: Record<string, number> = {
+    "A": 4.0, "A-": 3.7,
+    "B+": 3.3, "B": 3.0, "B-": 2.7,
+    "C+": 2.3, "C": 2.0, "C-": 1.7,
+    "D+": 1.3, "D": 1.0,
+    "F": 0.0,
+  };
+  return map[letter] ?? 0.0;
 }
 
 function round(n: number, decimals = 2): number {

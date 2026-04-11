@@ -4,7 +4,7 @@ import { at } from "./dates";
 export const mockExams: Exam[] = [
   {
     id: "e1",
-    courseId: "econ102",
+    course_id: "uuid-econ102",
     title: "Midterm 2",
     date: at(9, 9, 0),
     location: "Evans 60",
@@ -13,7 +13,7 @@ export const mockExams: Exam[] = [
   },
   {
     id: "e2",
-    courseId: "math251",
+    course_id: "uuid-math251",
     title: "Midterm 2",
     date: at(12, 13, 0),
     location: "Hearst 310",
@@ -22,7 +22,7 @@ export const mockExams: Exam[] = [
   },
   {
     id: "e3",
-    courseId: "cs344",
+    course_id: "uuid-cs344",
     title: "Final Exam",
     date: at(28, 9, 0),
     location: "Gates Auditorium",
@@ -31,7 +31,7 @@ export const mockExams: Exam[] = [
   },
   {
     id: "e4",
-    courseId: "bio150",
+    course_id: "uuid-bio150",
     title: "Final Exam",
     date: at(31, 11, 0),
     location: "Stanley 200",
