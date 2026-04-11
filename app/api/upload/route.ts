@@ -3,7 +3,7 @@ import pdfParse from "pdf-parse";
 import { parseSyllabus } from "@/lib/parsers/syllabus";
 import { parseAssignment } from "@/lib/parsers/assignment";
 import { getUserFromRequest } from "@/lib/supabase/server";
-import { upsertCourse, upsertGradeComponents } from "@/lib/db/courses";
+import { upsertSyllabus, upsertCourse } from "@/lib/db/courses";
 import { insertSyllabusAssignments, insertAssignment } from "@/lib/db/assignments";
 
 export const runtime = "nodejs"; // pdf-parse requires Node.js runtime
@@ -76,9 +76,9 @@ export async function POST(req: NextRequest) {
     // ── Syllabus upload ─────────────────────────────────────────────────────
     const result = await parseSyllabus(rawText);
 
-    // Persist course, grade components, and syllabus-derived assignments
-    const newCourseId = await upsertCourse(user.id, result);
-    await upsertGradeComponents(newCourseId, result);
+    // syllabus must be inserted first (courses.course_id FK references syllabus.course_id)
+    const syllabusId = await upsertSyllabus(result);
+    const newCourseId = await upsertCourse(user.id, syllabusId, result);
     const assignmentsCreated = await insertSyllabusAssignments(newCourseId, result);
 
     return NextResponse.json({
