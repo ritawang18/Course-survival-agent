@@ -7,17 +7,51 @@ import { cn } from "@/lib/utils/cn";
 import { useAppStore } from "@/lib/store/AppStoreProvider";
 
 export function UploadZone() {
-  const { simulateUpload } = useAppStore();
+  const { pushToast, simulateUpload } = useAppStore();
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-  const handleFiles = (files: FileList | File[]) => {
-    const arr = Array.from(files);
-    arr.forEach((f) => {
-      simulateUpload(f.name);
-    });
+  const uploadFile = async (file: File) => {
+    const kind = file.name.toLowerCase().includes("assignment")
+      ? "assignment"
+      : "syllabus";
+
+    const form = new FormData();
+    form.append("file", file);
+    form.append("kind", kind);
+
+    const res = await fetch("/api/upload", { method: "POST", body: form });
+    if (!res.ok) {
+      const { error } = await res.json().catch(() => ({ error: "Upload failed" }));
+      throw new Error(error);
+    }
+    return res.json();
   };
 
+  const handleFiles = async (files: FileList | File[]) => {
+    setUploading(true);
+    const arr = Array.from(files);
+    for (const file of arr) {
+      try {
+        await uploadFile(file);
+        pushToast({
+          kind: "success",
+          title: "Parsing complete",
+          description: `${file.name} extracted successfully.`,
+        });
+      } catch (err) {
+        pushToast({
+          kind: "error",
+          title: "Upload failed",
+          description: err instanceof Error ? err.message : "Unknown error",
+        });
+      }
+    }
+    setUploading(false);
+  };
+
+  // "Try a sample" still uses the simulation (no real PDF available)
   const handleSampleFile = (name: string) => {
     simulateUpload(name);
   };
@@ -53,9 +87,9 @@ export function UploadZone() {
       </p>
 
       <div className="flex items-center gap-2 mt-5">
-        <Button onClick={() => fileRef.current?.click()}>
+        <Button onClick={() => fileRef.current?.click()} loading={uploading}>
           <UploadCloud className="h-4 w-4" />
-          Choose files
+          {uploading ? "Uploading…" : "Choose files"}
         </Button>
         <Button
           variant="secondary"
