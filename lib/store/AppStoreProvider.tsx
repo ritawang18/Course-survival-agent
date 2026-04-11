@@ -12,6 +12,7 @@ import type {
   Assignment,
   AssignmentStatus,
   Course,
+  InstructorInsight,
   UploadArtifact,
 } from "./types";
 import { seedData } from "@/lib/mock";
@@ -38,6 +39,7 @@ interface AppStoreValue {
   replanStudy: () => Promise<void>;
   simulateUpload: (fileName: string) => Promise<void>;
   syncGoogleCalendar: () => Promise<void>;
+  fetchProfessorInsight: (courseId: string) => Promise<void>;
   // toast
   toasts: Toast[];
   pushToast: (t: Omit<Toast, "id">) => void;
@@ -45,6 +47,7 @@ interface AppStoreValue {
   // state flags
   replanning: boolean;
   syncing: boolean;
+  insightsLoading: Record<string, boolean>;
 }
 
 const AppStoreContext = createContext<AppStoreValue | null>(null);
@@ -54,6 +57,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [replanning, setReplanning] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [insightsLoading, setInsightsLoading] = useState<Record<string, boolean>>({});
 
   const pushToast = useCallback((t: Omit<Toast, "id">) => {
     const id = Date.now() + Math.floor(Math.random() * 1000);
@@ -207,6 +211,82 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     [pushToast]
   );
 
+  const fetchProfessorInsight = useCallback(
+    async (courseId: string) => {
+      const course = data.courses.find((c) => c.id === courseId);
+      if (!course) {
+        pushToast({
+          kind: "error",
+          title: "Could not fetch insights",
+          description: "Course not found.",
+        });
+        return;
+      }
+      if (!course.instructor || !course.school) {
+        pushToast({
+          kind: "error",
+          title: "Could not fetch insights",
+          description: "Missing professor or school for this course.",
+        });
+        return;
+      }
+
+      setInsightsLoading((prev) => ({ ...prev, [courseId]: true }));
+      try {
+        const res = await fetch("/api/professor-insights", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            professorName: course.instructor,
+            universityName: course.school,
+            courseId,
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok || !json.ok) {
+          const reason = (json && json.reason) || "internal";
+          pushToast({
+            kind: "error",
+            title: "Could not fetch insights",
+            description: `Reason: ${reason}`,
+          });
+          return;
+        }
+        const insight: InstructorInsight = { ...json.insight, courseId };
+        setData((prev) => {
+          const exists = prev.insights.some((i) => i.courseId === courseId);
+          return {
+            ...prev,
+            insights: exists
+              ? prev.insights.map((i) => (i.courseId === courseId ? insight : i))
+              : [...prev.insights, insight],
+          };
+        });
+        pushToast({
+          kind: json.cached ? "info" : "success",
+          title: json.cached ? "Loaded cached insight" : "Insight refreshed",
+          description: `${course.instructor} · ${course.school}`,
+        });
+      } catch (err) {
+        pushToast({
+          kind: "error",
+          title: "Could not fetch insights",
+          description:
+            err instanceof Error && /fetch|network/i.test(err.message)
+              ? "Network error"
+              : "Unexpected error",
+        });
+      } finally {
+        setInsightsLoading((prev) => {
+          const next = { ...prev };
+          delete next[courseId];
+          return next;
+        });
+      }
+    },
+    [data.courses, pushToast]
+  );
+
   const syncGoogleCalendar = useCallback(async () => {
     setSyncing(true);
     await simulateDelay(1000, 1800);
@@ -227,11 +307,13 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       replanStudy,
       simulateUpload,
       syncGoogleCalendar,
+      fetchProfessorInsight,
       toasts,
       pushToast,
       dismissToast,
       replanning,
       syncing,
+      insightsLoading,
     }),
     [
       data,
@@ -241,11 +323,13 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       replanStudy,
       simulateUpload,
       syncGoogleCalendar,
+      fetchProfessorInsight,
       toasts,
       pushToast,
       dismissToast,
       replanning,
       syncing,
+      insightsLoading,
     ]
   );
 

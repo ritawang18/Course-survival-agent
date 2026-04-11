@@ -1,3 +1,5 @@
+import type { InstructorInsight } from "@/lib/schemas/insight";
+
 export type CourseColor = "indigo" | "emerald" | "amber" | "rose" | "sky" | "violet";
 
 export type AssignmentStatus = "not_started" | "in_progress" | "done" | "overdue";
@@ -38,6 +40,7 @@ export interface Course {
   code: string;
   name: string;
   instructor: string;
+  school: string;
   color: CourseColor;
   credits: number;
   schedule: string;
@@ -112,22 +115,12 @@ export interface UploadArtifact {
   };
 }
 
-export interface InstructorInsight {
-  courseId: string;
-  rmp: {
-    score: number;
-    sentiment: "positive" | "mixed" | "negative";
-    summary: string;
-    quotes: string[];
-    tags: string[];
-  };
-  reddit: {
-    sentiment: "positive" | "mixed" | "negative";
-    summary: string;
-    quotes: string[];
-    tags: string[];
-  };
-}
+export type {
+  InstructorInsight,
+  RmpInsight,
+  RedditInsight,
+  Sentiment,
+} from "@/lib/schemas/insight";
 
 export interface AppData {
   courses: Course[];

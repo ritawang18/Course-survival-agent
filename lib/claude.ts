@@ -1,12 +1,20 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-if (!process.env.ANTHROPIC_API_KEY) {
-  throw new Error("Missing ANTHROPIC_API_KEY environment variable");
+let _client: Anthropic | null = null;
+function getClient(): Anthropic {
+  if (_client) return _client;
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error("Missing ANTHROPIC_API_KEY environment variable");
+  }
+  _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return _client;
 }
 
-export const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+export const anthropic = {
+  get messages() {
+    return getClient().messages;
+  },
+};
 
 /** Convenience: single-turn JSON extraction. Throws on parse failure. */
 export async function extractJSON<T>(
@@ -14,7 +22,7 @@ export async function extractJSON<T>(
   userContent: string,
   model = "claude-sonnet-4-6"
 ): Promise<T> {
-  const message = await anthropic.messages.create({
+  const message = await getClient().messages.create({
     model,
     max_tokens: 4096,
     system: systemPrompt,

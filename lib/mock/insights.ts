@@ -3,6 +3,8 @@ import type { InstructorInsight } from "@/lib/store/types";
 export const mockInsights: InstructorInsight[] = [
   {
     courseId: "cs344",
+    professorName: "Prof. Elena Vasquez",
+    universityName: "UC Berkeley",
     rmp: {
       score: 4.3,
       sentiment: "positive",
@@ -28,6 +30,8 @@ export const mockInsights: InstructorInsight[] = [
   },
   {
     courseId: "math251",
+    professorName: "Prof. Rahul Mehta",
+    universityName: "UC Berkeley",
     rmp: {
       score: 4.6,
       sentiment: "positive",
@@ -52,6 +56,8 @@ export const mockInsights: InstructorInsight[] = [
   },
   {
     courseId: "hist210",
+    professorName: "Prof. Anna Holloway",
+    universityName: "UC Berkeley",
     rmp: {
       score: 3.4,
       sentiment: "mixed",
@@ -76,6 +82,8 @@ export const mockInsights: InstructorInsight[] = [
   },
   {
     courseId: "econ102",
+    professorName: "Prof. David Chen",
+    universityName: "UC Berkeley",
     rmp: {
       score: 3.1,
       sentiment: "mixed",
@@ -100,6 +108,8 @@ export const mockInsights: InstructorInsight[] = [
   },
   {
     courseId: "bio150",
+    professorName: "Prof. Sofia Ramirez",
+    universityName: "UC Berkeley",
     rmp: {
       score: 4.1,
       sentiment: "positive",

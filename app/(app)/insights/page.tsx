@@ -8,13 +8,58 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import { useAppStore } from "@/lib/store/AppStoreProvider";
 import { courseColorMap } from "@/components/common/CourseColor";
 import { cn } from "@/lib/utils/cn";
-import { Info, Quote, Star, MessageSquare, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Info, Quote, Star, MessageSquare, ThumbsUp, ThumbsDown, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import type { RmpInsight, RedditInsight } from "@/lib/schemas/insight";
+
+const UNAVAILABLE_RMP: RmpInsight = {
+  score: 0,
+  sentiment: "unavailable",
+  summary: "No Rate My Professor data available for this instructor.",
+  quotes: [],
+  tags: [],
+};
+
+const UNAVAILABLE_REDDIT: RedditInsight = {
+  sentiment: "unavailable",
+  summary: "No Reddit discussion found for this instructor.",
+  quotes: [],
+  tags: [],
+};
+
+function sentimentVariant(s: RmpInsight["sentiment"]): "success" | "warning" | "danger" | "muted" {
+  if (s === "positive") return "success";
+  if (s === "mixed") return "warning";
+  if (s === "negative") return "danger";
+  return "muted";
+}
+
+function formatRelative(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "just now";
+  const diffSec = Math.floor((Date.now() - then) / 1000);
+  if (diffSec < 30) return "just now";
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay}d ago`;
+}
 
 export default function InsightsPage() {
-  const { data } = useAppStore();
+  const { data, fetchProfessorInsight, insightsLoading } = useAppStore();
   const [selectedId, setSelectedId] = useState(data.courses[0].id);
   const course = data.courses.find((c) => c.id === selectedId)!;
-  const insight = data.insights.find((i) => i.courseId === selectedId)!;
+  const rawInsight = data.insights.find((i) => i.courseId === selectedId);
+  const insight: { rmp: RmpInsight; reddit: RedditInsight } = {
+    rmp: rawInsight?.rmp ?? UNAVAILABLE_RMP,
+    reddit: rawInsight?.reddit ?? UNAVAILABLE_REDDIT,
+  };
+  const isLive = !!rawInsight?.generatedAt;
+  const loading = !!insightsLoading[selectedId];
+  const canRefresh = !!course.instructor && !!course.school && !loading;
 
   return (
     <div>
@@ -24,11 +69,35 @@ export default function InsightsPage() {
         description="What other students say about your professors — summarized from public sources."
       />
 
-      <div className="card-surface p-3 mb-5 flex items-start gap-3 border-l-4 border-l-accent">
-        <Info className="h-4 w-4 text-accent mt-0.5 shrink-0" />
-        <p className="text-xs text-muted">
-          Mock data — not connected to real Rate My Professor or Reddit APIs. Summaries are illustrative.
-        </p>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div
+          className={cn(
+            "card-surface p-3 flex items-start gap-3 border-l-4 flex-1 min-w-[260px]",
+            isLive ? "border-l-success" : "border-l-accent"
+          )}
+        >
+          <Info
+            className={cn(
+              "h-4 w-4 mt-0.5 shrink-0",
+              isLive ? "text-success" : "text-accent"
+            )}
+          />
+          <p className="text-xs text-muted">
+            {isLive
+              ? `Live data · generated ${formatRelative(rawInsight!.generatedAt!)} from Rate My Professor + Reddit.`
+              : "Mock data — click Refresh to pull live RMP + Reddit summaries via Claude."}
+          </p>
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          loading={loading}
+          disabled={!canRefresh}
+          onClick={() => fetchProfessorInsight(selectedId)}
+        >
+          {!loading && <RefreshCw className="h-3.5 w-3.5" />}
+          Refresh from sources
+        </Button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-5">
@@ -69,15 +138,7 @@ export default function InsightsPage() {
                       {course.code} · {course.name}
                     </p>
                   </div>
-                  <Badge
-                    variant={
-                      insight.rmp.sentiment === "positive"
-                        ? "success"
-                        : insight.rmp.sentiment === "mixed"
-                        ? "warning"
-                        : "danger"
-                    }
-                  >
+                  <Badge variant={sentimentVariant(insight.rmp.sentiment)}>
                     {insight.rmp.sentiment}
                   </Badge>
                 </CardHeader>
@@ -179,15 +240,7 @@ export default function InsightsPage() {
                       </p>
                     </div>
                   </div>
-                  <Badge
-                    variant={
-                      insight.reddit.sentiment === "positive"
-                        ? "success"
-                        : insight.reddit.sentiment === "mixed"
-                        ? "warning"
-                        : "danger"
-                    }
-                  >
+                  <Badge variant={sentimentVariant(insight.reddit.sentiment)}>
                     {insight.reddit.sentiment}
                   </Badge>
                 </CardHeader>

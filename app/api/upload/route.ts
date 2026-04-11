@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import pdfParse from "pdf-parse";
+import { PDFParse } from "pdf-parse";
 import { parseSyllabus } from "@/lib/parsers/syllabus";
 import { parseAssignment } from "@/lib/parsers/assignment";
 
@@ -21,8 +21,13 @@ export async function POST(req: NextRequest) {
     // ── Extract raw text ────────────────────────────────────────────────────
     let rawText = "";
     if (fileName.toLowerCase().endsWith(".pdf")) {
-      const parsed = await pdfParse(buffer);
-      rawText = parsed.text;
+      const parser = new PDFParse({ data: new Uint8Array(buffer) });
+      try {
+        const result = await parser.getText();
+        rawText = result.text;
+      } finally {
+        await parser.destroy();
+      }
     } else {
       // Plain text fallback (.txt, .md)
       rawText = buffer.toString("utf-8");
