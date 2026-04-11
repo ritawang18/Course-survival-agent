@@ -52,7 +52,7 @@ export function CourseCard({ course }: { course: Course }) {
               {course.instructor}
             </p>
           </div>
-          <GradeRing grade={course.currentGrade} size={52} stroke={5} />
+          <GradeRing grade={course.current_grade_percent ?? 0} size={52} stroke={5} />
         </div>
 
         <div className="h-px bg-border/60 my-4" />

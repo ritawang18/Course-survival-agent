@@ -25,7 +25,8 @@ export default function DashboardPage() {
   const { data } = useAppStore();
 
   const avgGrade =
-    data.courses.reduce((sum, c) => sum + c.currentGrade, 0) / data.courses.length;
+    data.courses.reduce((sum, c) => sum + (c.current_grade_percent ?? 0), 0) /
+    data.courses.length;
   const avgGpa = gpa(avgGrade);
 
   const upcoming = data.assignments.filter(

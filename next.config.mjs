@@ -1,9 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  experimental: {
-    webpackBuildWorker: false,
-  },
   // TODO(post-rita-merge): the rita merge renamed several store fields
   // (Course.code/name/instructor/school, Assignment.dueDate/courseId/priority/
   // estimatedHours, StudyBlock.courseId, etc.) to snake_case. The backend

@@ -6,16 +6,24 @@ import { useAppStore } from "@/lib/store/AppStoreProvider";
 import { relativeDue } from "@/lib/utils/date";
 import { courseColorMap } from "@/components/common/CourseColor";
 import { PriorityBadge } from "@/components/common/PriorityBadge";
+import type { Priority } from "@/lib/store/types";
 import { cn } from "@/lib/utils/cn";
 import { differenceInCalendarDays } from "date-fns";
 import { Clock } from "lucide-react";
 
+function priorityFromScore(score: number | undefined): Priority {
+  if (score == null) return "optional";
+  if (score >= 70) return "urgent";
+  if (score >= 40) return "important";
+  return "optional";
+}
+
 export function DeadlineList({ limit = 6 }: { limit?: number }) {
   const { data } = useAppStore();
   const upcoming = [...data.assignments]
-    .filter((a) => a.status !== "done")
+    .filter((a) => a.status !== "done" && !!a.due_at)
     .sort(
-      (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+      (a, b) => new Date(a.due_at!).getTime() - new Date(b.due_at!).getTime()
     )
     .slice(0, limit);
 
@@ -33,8 +41,8 @@ export function DeadlineList({ limit = 6 }: { limit?: number }) {
       </CardHeader>
       <CardBody className="space-y-1">
         {upcoming.map((a) => {
-          const course = data.courses.find((c) => c.id === a.courseId);
-          const days = differenceInCalendarDays(new Date(a.dueDate), new Date());
+          const course = data.courses.find((c) => c.id === a.course_id);
+          const days = differenceInCalendarDays(new Date(a.due_at!), new Date());
           const overdue = days < 0 || a.status === "overdue";
           return (
             <div
@@ -50,16 +58,16 @@ export function DeadlineList({ limit = 6 }: { limit?: number }) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-medium truncate">{a.title}</span>
-                  <PriorityBadge priority={a.priority} />
+                  <PriorityBadge priority={priorityFromScore(a.importance_score)} />
                 </div>
                 <div className="flex items-center gap-2 text-[11px] text-muted mt-0.5">
-                  <span>{course?.code}</span>
+                  <span>{course?.code ?? course?.course_id}</span>
                   <span>·</span>
                   <span className={overdue ? "text-danger font-medium" : ""}>
-                    {relativeDue(a.dueDate)}
+                    {relativeDue(a.due_at!)}
                   </span>
                   <span>·</span>
-                  <span>{a.estimatedHours}h</span>
+                  <span>{a.estimated_hours ?? 0}h</span>
                 </div>
               </div>
             </div>

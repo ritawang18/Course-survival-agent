@@ -9,8 +9,15 @@ import { Drawer } from "@/components/ui/Drawer";
 import { PriorityBadge } from "@/components/common/PriorityBadge";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useAppStore } from "@/lib/store/AppStoreProvider";
-import type { Assignment, AssignmentStatus } from "@/lib/store/types";
+import type { Assignment, AssignmentStatus, Priority } from "@/lib/store/types";
 import { relativeDue } from "@/lib/utils/date";
+
+function priorityFromScore(score: number | undefined): Priority {
+  if (score == null) return "optional";
+  if (score >= 70) return "urgent";
+  if (score >= 40) return "important";
+  return "optional";
+}
 import { courseColorMap } from "@/components/common/CourseColor";
 import { cn } from "@/lib/utils/cn";
 import {
@@ -60,14 +67,16 @@ export default function AssignmentsPage() {
       filter === "all"
         ? data.assignments
         : data.assignments.filter((a) => a.status === filter);
-    return [...arr].sort(
-      (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
-    );
+    return [...arr]
+      .filter((a) => !!a.due_at)
+      .sort(
+        (a, b) => new Date(a.due_at!).getTime() - new Date(b.due_at!).getTime()
+      );
   }, [data.assignments, filter]);
 
   const openAssignment = data.assignments.find((a) => a.id === openId) ?? null;
   const openCourse = openAssignment
-    ? data.courses.find((c) => c.id === openAssignment.courseId)
+    ? data.courses.find((c) => c.id === openAssignment.course_id)
     : null;
 
   return (
@@ -132,7 +141,8 @@ export default function AssignmentsPage() {
             </thead>
             <tbody>
               {filtered.map((a) => {
-                const course = data.courses.find((c) => c.id === a.courseId);
+                const course = data.courses.find((c) => c.id === a.course_id);
+                const deps = a.dependencies ?? [];
                 return (
                   <tr
                     key={a.id}
@@ -141,10 +151,10 @@ export default function AssignmentsPage() {
                   >
                     <td className="px-5 py-3">
                       <div className="font-medium">{a.title}</div>
-                      {a.dependencies.length > 0 && (
+                      {deps.length > 0 && (
                         <div className="flex items-center gap-1 text-[11px] text-muted mt-1">
                           <GitBranch className="h-3 w-3" />
-                          Requires: {a.dependencies.join(", ")}
+                          Requires: {deps.join(", ")}
                         </div>
                       )}
                     </td>
@@ -158,17 +168,17 @@ export default function AssignmentsPage() {
                               : "bg-border"
                           )}
                         />
-                        <span className="font-mono text-xs">{course?.code}</span>
+                        <span className="font-mono text-xs">{course?.code ?? course?.course_id}</span>
                       </div>
                     </td>
                     <td className="px-3 py-3 text-muted whitespace-nowrap">
-                      {relativeDue(a.dueDate)}
+                      {relativeDue(a.due_at!)}
                     </td>
                     <td className="px-3 py-3">
-                      <PriorityBadge priority={a.priority} />
+                      <PriorityBadge priority={priorityFromScore(a.importance_score)} />
                     </td>
                     <td className="px-3 py-3 text-muted font-mono text-xs">
-                      {a.estimatedHours}h
+                      {a.estimated_hours ?? 0}h
                     </td>
                     <td className="px-3 py-3">
                       <Badge variant={statusMap[a.status].variant}>
@@ -187,20 +197,26 @@ export default function AssignmentsPage() {
         open={openAssignment != null}
         onClose={() => setOpenId(null)}
         title={openAssignment?.title}
-        description={openCourse ? `${openCourse.code} · ${openCourse.name}` : undefined}
+        description={
+          openCourse
+            ? `${openCourse.code ?? openCourse.course_id} · ${openCourse.name ?? openCourse.course_name}`
+            : undefined
+        }
       >
         {openAssignment && (
           <div className="space-y-5">
             <div className="flex flex-wrap items-center gap-2">
-              <PriorityBadge priority={openAssignment.priority} />
+              <PriorityBadge priority={priorityFromScore(openAssignment.importance_score)} />
               <Badge variant={statusMap[openAssignment.status].variant}>
                 {statusMap[openAssignment.status].label}
               </Badge>
               <Badge variant="muted">
                 <Clock className="h-3 w-3" />
-                {openAssignment.estimatedHours}h est.
+                {openAssignment.estimated_hours ?? 0}h est.
               </Badge>
-              <Badge variant="muted">Due {relativeDue(openAssignment.dueDate)}</Badge>
+              {openAssignment.due_at && (
+                <Badge variant="muted">Due {relativeDue(openAssignment.due_at)}</Badge>
+              )}
             </div>
 
             <div>
@@ -210,13 +226,13 @@ export default function AssignmentsPage() {
               <p className="text-sm leading-relaxed">{openAssignment.description}</p>
             </div>
 
-            {openAssignment.dependencies.length > 0 && (
+            {(openAssignment.dependencies ?? []).length > 0 && (
               <div>
                 <div className="text-[11px] uppercase tracking-wider text-muted font-medium mb-2">
                   Dependencies
                 </div>
                 <div className="space-y-1.5">
-                  {openAssignment.dependencies.map((d) => (
+                  {(openAssignment.dependencies ?? []).map((d) => (
                     <div
                       key={d}
                       className="flex items-center gap-2 text-sm muted-surface rounded-lg px-3 py-2"

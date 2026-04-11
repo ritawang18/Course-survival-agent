@@ -11,7 +11,7 @@ export function CourseHeader({ course }: { course: Course }) {
       <div className={cn("h-2 w-full bg-gradient-to-r", colors.stripe)} />
       <div className="p-6 flex flex-col md:flex-row md:items-start md:justify-between gap-5">
         <div className="flex gap-5">
-          <GradeRing grade={course.currentGrade} size={72} stroke={6} label="current" />
+          <GradeRing grade={course.current_grade_percent ?? 0} size={72} stroke={6} label="current" />
           <div>
             <div className="flex items-center gap-2">
               <span
@@ -46,7 +46,7 @@ export function CourseHeader({ course }: { course: Course }) {
         </div>
 
         <div className="flex items-center gap-6 md:gap-8">
-          <Stat label="Current" value={`${course.currentGrade.toFixed(1)}%`} />
+          <Stat label="Current" value={`${(course.current_grade_percent ?? 0).toFixed(1)}%`} />
           <Stat
             label="Absences"
             value={`${course.missedClasses}/${course.attendancePolicy.maxAbsences}`}

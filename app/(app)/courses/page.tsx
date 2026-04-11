@@ -96,9 +96,9 @@ export default function CoursesPage() {
                   <td className="px-3 py-3 text-right">
                     <div className="inline-flex items-center gap-2 justify-end">
                       <span className="font-mono font-semibold">
-                        {c.currentGrade.toFixed(1)}%
+                        {(c.current_grade_percent ?? 0).toFixed(1)}%
                       </span>
-                      <GradeRing grade={c.currentGrade} size={32} stroke={3} />
+                      <GradeRing grade={c.current_grade_percent ?? 0} size={32} stroke={3} />
                     </div>
                   </td>
                   <td className="px-5 py-3 text-right font-mono text-xs text-muted">

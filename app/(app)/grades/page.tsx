@@ -62,7 +62,7 @@ export default function GradesPage() {
               </span>
             </div>
             <div className="text-sm font-semibold mt-1 font-mono">
-              {c.currentGrade.toFixed(1)}%
+              {(c.current_grade_percent ?? 0).toFixed(1)}%
             </div>
           </button>
         ))}
@@ -271,10 +271,10 @@ export default function GradesPage() {
                   />
                   <span className="text-sm flex-1 truncate">{c.code}</span>
                   <span className="text-xs font-mono text-muted">
-                    {letter(c.currentGrade)}
+                    {letter(c.current_grade_percent ?? 0)}
                   </span>
                   <span className="font-mono text-sm font-semibold">
-                    {c.currentGrade.toFixed(1)}%
+                    {(c.current_grade_percent ?? 0).toFixed(1)}%
                   </span>
                 </div>
               ))}

@@ -24,12 +24,13 @@ export function GradeSnapshotCard() {
       </CardHeader>
       <CardBody className="space-y-2">
         {data.courses.map((c) => {
+          const grade = c.current_grade_percent ?? 0;
           const tone =
-            c.currentGrade >= 90
+            grade >= 90
               ? "success"
-              : c.currentGrade >= 80
+              : grade >= 80
               ? "accent"
-              : c.currentGrade >= 70
+              : grade >= 70
               ? "warning"
               : "danger";
           return (
@@ -37,7 +38,7 @@ export function GradeSnapshotCard() {
               key={c.id}
               className="flex items-center gap-3 p-2 rounded-xl hover:bg-[hsl(var(--surface-2))] transition-colors"
             >
-              <GradeRing grade={c.currentGrade} size={42} stroke={4} tone={tone} />
+              <GradeRing grade={grade} size={42} stroke={4} tone={tone} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span
@@ -46,13 +47,13 @@ export function GradeSnapshotCard() {
                       courseColorMap[c.color].bg
                     )}
                   />
-                  <span className="text-sm font-medium truncate">{c.code}</span>
+                  <span className="text-sm font-medium truncate">{c.code ?? c.course_id}</span>
                 </div>
-                <div className="text-[11px] text-muted truncate">{c.name}</div>
+                <div className="text-[11px] text-muted truncate">{c.name ?? c.course_name}</div>
               </div>
               <div className="text-right">
                 <div className="text-sm font-mono font-semibold">
-                  {c.currentGrade.toFixed(1)}%
+                  {grade.toFixed(1)}%
                 </div>
                 <div className="text-[10px] text-muted">{c.credits} cr</div>
               </div>
