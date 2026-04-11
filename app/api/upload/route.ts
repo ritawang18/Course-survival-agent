@@ -2,14 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 import pdfParse from "pdf-parse";
 import { parseSyllabus } from "@/lib/parsers/syllabus";
 import { parseAssignment } from "@/lib/parsers/assignment";
+import { getUserFromRequest } from "@/lib/supabase/server";
+import { upsertCourse, upsertGradeComponents } from "@/lib/db/courses";
+import { insertSyllabusAssignments, insertAssignment } from "@/lib/db/assignments";
 
 export const runtime = "nodejs"; // pdf-parse requires Node.js runtime
 
 export async function POST(req: NextRequest) {
+  // ── Auth ──────────────────────────────────────────────────────────────────
+  const user = await getUserFromRequest(req);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const form = await req.formData();
     const file = form.get("file");
-    const kind = (form.get("kind") as string) ?? "syllabus"; // "syllabus" | "notes" | "assignment"
+    const kind = (form.get("kind") as string) ?? "syllabus"; // "syllabus" | "assignment"
+    // For assignment uploads the frontend must include the course_id
+    const courseId = form.get("course_id") as string | null;
 
     if (!file || typeof file === "string") {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
@@ -24,7 +35,6 @@ export async function POST(req: NextRequest) {
       const parsed = await pdfParse(buffer);
       rawText = parsed.text;
     } else {
-      // Plain text fallback (.txt, .md)
       rawText = buffer.toString("utf-8");
     }
 
@@ -35,39 +45,52 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── AI extraction ───────────────────────────────────────────────────────
+    // ── Assignment upload ───────────────────────────────────────────────────
     if (kind === "assignment") {
+      if (!courseId) {
+        return NextResponse.json(
+          { error: "course_id is required for assignment uploads" },
+          { status: 400 }
+        );
+      }
+
       const result = await parseAssignment(rawText);
+      const assignmentId = await insertAssignment(courseId, result);
+
       return NextResponse.json({
         kind,
         fileName,
-        pages: rawText.length, // approximate
+        assignmentId,
         extracted: {
-          // Map to the UploadArtifact shape the frontend expects
           deadlines: result.dueDate
             ? [{ label: result.title ?? "Due date", date: result.dueDate, confidence: 0.9 }]
             : [],
           weights: [],
           examDates: [],
           attendancePolicy: { text: "", confidence: 0 },
-          // Extra assignment-specific fields
           assignment: result,
         },
       });
     }
 
-    // syllabus or notes
+    // ── Syllabus upload ─────────────────────────────────────────────────────
     const result = await parseSyllabus(rawText);
+
+    // Persist course, grade components, and syllabus-derived assignments
+    const newCourseId = await upsertCourse(user.id, result);
+    await upsertGradeComponents(newCourseId, result);
+    const assignmentsCreated = await insertSyllabusAssignments(newCourseId, result);
+
     return NextResponse.json({
       kind,
       fileName,
-      pages: rawText.length,
+      courseId: newCourseId,
+      assignmentsCreated,
       extracted: {
         deadlines: result.deadlines,
         weights: result.weights,
         examDates: result.examDates,
         attendancePolicy: result.attendancePolicy,
-        // Extra syllabus-specific fields
         courseCode: result.courseCode,
         courseName: result.courseName,
         instructor: result.instructor,
