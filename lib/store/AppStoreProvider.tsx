@@ -645,7 +645,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
         pushToast({
           kind: "info",
           title: "Nothing to sync",
-          description: "No upcoming study blocks or exams are available to send to Google Calendar.",
+          description: "No upcoming deadlines, exams, or study blocks are available to send to Google Calendar.",
         });
         return;
       }
@@ -666,7 +666,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        throw new Error("Google Calendar is not connected yet.");
+        throw new Error(authJson?.error ?? "Google Calendar is not connected yet.");
       }
 
       if (!eventsRes.ok) {
@@ -687,7 +687,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
         pushToast({
           kind: "success",
           title: "Calendar already up to date",
-          description: "Upcoming study blocks and exams are already present in Google Calendar.",
+          description: "Upcoming deadlines, exams, and study blocks are already present in Google Calendar.",
         });
         return;
       }
@@ -715,7 +715,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
             return;
           }
 
-          throw new Error("Google Calendar authorization expired.");
+          throw new Error(authJson?.error ?? "Google Calendar authorization expired.");
         }
 
         if (!createRes.ok) {
