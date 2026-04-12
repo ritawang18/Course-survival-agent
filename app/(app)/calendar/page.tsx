@@ -8,7 +8,10 @@ import { Badge } from "@/components/ui/Badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import { useAppStore } from "@/lib/store/AppStoreProvider";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { buildCalendarExportEvents } from "@/lib/calendar/export-events";
+import {
+  buildCalendarDisplayEvents,
+  buildCalendarExportEvents,
+} from "@/lib/calendar/export-events";
 import { weekDays, isoDay, isSameDay, shortDay, format } from "@/lib/utils/date";
 import { courseColorMap } from "@/components/common/CourseColor";
 import { cn } from "@/lib/utils/cn";
@@ -33,8 +36,9 @@ const typeDot = {
 export default function CalendarPage() {
   const { data, syncGoogleCalendar, syncing, pushToast } = useAppStore();
   const [cursor, setCursor] = useState(new Date());
+  const [activeView, setActiveView] = useState<"week" | "month">("week");
   const [downloadingIcs, setDownloadingIcs] = useState(false);
-  const studyBlocks = data.studyBlocks;
+  const calendarEvents = useMemo(() => buildCalendarDisplayEvents(data), [data]);
 
   const monthDays = useMemo(() => {
     const start = startOfWeek(startOfMonth(cursor), { weekStartsOn: 1 });
@@ -49,24 +53,28 @@ export default function CalendarPage() {
   }, [cursor]);
 
   const weekDaysArr = useMemo(() => weekDays(cursor), [cursor]);
-  const blocksByDay = useMemo(() => {
-    const map: Record<string, typeof studyBlocks> = {};
-    for (const b of studyBlocks) {
-      const key = b.date.slice(0, 10);
-      (map[key] ??= []).push(b);
+  const eventsByDay = useMemo(() => {
+    const map: Record<string, typeof calendarEvents> = {};
+    for (const event of calendarEvents) {
+      const key = event.date.slice(0, 10);
+      (map[key] ??= []).push(event);
     }
     Object.values(map).forEach((arr) =>
-      arr.sort((a, b) => a.start.localeCompare(b.start))
+      arr.sort((a, b) => {
+        if (a.allDay && !b.allDay) return -1;
+        if (!a.allDay && b.allDay) return 1;
+        return a.start.localeCompare(b.start);
+      })
     );
     return map;
-  }, [studyBlocks]);
+  }, [calendarEvents]);
 
-  // free slots: 08:00 - 22:00 minus existing blocks
+  // free slots: 08:00 - 22:00 minus timed calendar events
   const freeSlots = useMemo(() => {
     return weekDaysArr.map((d) => {
       const key = isoDay(d).slice(0, 10);
-      const blocks = blocksByDay[key] ?? [];
-      const busy = blocks.map((b) => ({ s: toMin(b.start), e: toMin(b.end) }));
+      const events = (eventsByDay[key] ?? []).filter((event) => !event.allDay);
+      const busy = events.map((event) => ({ s: toMin(event.start), e: toMin(event.end) }));
       busy.sort((a, b) => a.s - b.s);
       const merged: { s: number; e: number }[] = [];
       for (const b of busy) {
@@ -84,7 +92,36 @@ export default function CalendarPage() {
       if (cursorMin < endMin) free.push({ start: fmt(cursorMin), end: fmt(endMin) });
       return { date: d, slots: free.filter((s) => toMin(s.end) - toMin(s.start) >= 45) };
     });
-  }, [blocksByDay, weekDaysArr]);
+  }, [eventsByDay, weekDaysArr]);
+
+  const navigationLabel =
+    activeView === "week"
+      ? `${format(weekDaysArr[0], "MMM d")} - ${format(weekDaysArr[6], "MMM d")}`
+      : format(cursor, "MMMM yyyy");
+
+  const stepBackward = () => {
+    setCursor((current) => {
+      const next = new Date(current);
+      if (activeView === "week") {
+        next.setDate(next.getDate() - 7);
+      } else {
+        next.setMonth(next.getMonth() - 1);
+      }
+      return next;
+    });
+  };
+
+  const stepForward = () => {
+    setCursor((current) => {
+      const next = new Date(current);
+      if (activeView === "week") {
+        next.setDate(next.getDate() + 7);
+      } else {
+        next.setMonth(next.getMonth() + 1);
+      }
+      return next;
+    });
+  };
 
   const downloadIcs = async () => {
     setDownloadingIcs(true);
@@ -94,7 +131,7 @@ export default function CalendarPage() {
         pushToast({
           kind: "info",
           title: "Nothing to export",
-          description: "There are no upcoming study blocks or exams to include in the ICS file.",
+          description: "There are no upcoming deadlines, exams, or study blocks to include in the ICS file.",
         });
         return;
       }
@@ -156,33 +193,21 @@ export default function CalendarPage() {
       <PageHeader
         eyebrow="Schedule"
         title="Calendar"
-        description="Study blocks, classes, exams, and office hours in one view."
+        description="Syllabus deadlines, exams, and study blocks in one unified calendar."
         actions={
           <div className="flex items-center gap-2">
             <div className="inline-flex items-center border border-border rounded-xl bg-surface">
               <button
-                onClick={() =>
-                  setCursor((d) => {
-                    const n = new Date(d);
-                    n.setMonth(n.getMonth() - 1);
-                    return n;
-                  })
-                }
+                onClick={stepBackward}
                 className="h-9 w-9 flex items-center justify-center hover:bg-[hsl(var(--surface-2))] rounded-l-xl"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <span className="text-xs font-medium px-3">
-                {format(cursor, "MMMM yyyy")}
+                {navigationLabel}
               </span>
               <button
-                onClick={() =>
-                  setCursor((d) => {
-                    const n = new Date(d);
-                    n.setMonth(n.getMonth() + 1);
-                    return n;
-                  })
-                }
+                onClick={stepForward}
                 className="h-9 w-9 flex items-center justify-center hover:bg-[hsl(var(--surface-2))] rounded-r-xl"
               >
                 <ChevronRight className="h-4 w-4" />
@@ -210,7 +235,7 @@ export default function CalendarPage() {
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 lg:gap-5">
         <div className="xl:col-span-3">
-          <Tabs defaultValue="week">
+          <Tabs value={activeView} onValueChange={(value) => setActiveView(value as "week" | "month")}>
             <TabsList>
               <TabsTrigger value="week">Week</TabsTrigger>
               <TabsTrigger value="month">Month</TabsTrigger>
@@ -245,24 +270,24 @@ export default function CalendarPage() {
                   <div className="grid grid-cols-7 min-h-[540px]">
                     {weekDaysArr.map((d) => {
                       const key = isoDay(d).slice(0, 10);
-                      const blocks = blocksByDay[key] ?? [];
+                      const dayEvents = eventsByDay[key] ?? [];
                       return (
                         <div
                           key={key}
                           className="p-1.5 space-y-1 border-r border-border/60 last:border-r-0 muted-surface/30"
                         >
-                          {blocks.map((b) => {
+                          {dayEvents.map((event) => {
                             const course = data.courses.find(
-                              (c) => c.id === b.course_id
+                              (c) => c.id === event.courseId
                             );
                             const colors = course ? courseColorMap[course.color] : null;
                             return (
                               <div
-                                key={b.id}
+                                key={event.id}
                                 className={cn(
                                   "rounded-md p-1.5 text-[11px] leading-tight border-l-[3px]",
                                   colors?.softBg ?? "muted-surface",
-                                  b.conflict && "ring-1 ring-danger/50"
+                                  event.conflict && "ring-1 ring-danger/50"
                                 )}
                                 style={{
                                   borderLeftColor: course
@@ -270,10 +295,10 @@ export default function CalendarPage() {
                                     : undefined,
                                 }}
                               >
-                                <div className="font-medium truncate">{b.title}</div>
+                                <div className="font-medium truncate">{event.title}</div>
                                 <div className="text-muted font-mono flex items-center gap-1 mt-0.5">
-                                  <span className={cn("h-1.5 w-1.5 rounded-full", typeDot[b.type])} />
-                                  {b.start}
+                                  <span className={cn("h-1.5 w-1.5 rounded-full", typeDot[event.type])} />
+                                  {event.allDay ? "All day" : event.start}
                                 </div>
                               </div>
                             );
@@ -299,7 +324,7 @@ export default function CalendarPage() {
                   <div className="grid grid-cols-7 auto-rows-[96px]">
                     {monthDays.map((d) => {
                       const key = isoDay(d).slice(0, 10);
-                      const blocks = blocksByDay[key] ?? [];
+                      const dayEvents = eventsByDay[key] ?? [];
                       const inMonth = isSameMonth(d, cursor);
                       const isToday = isSameDay(d, new Date());
                       return (
@@ -319,30 +344,28 @@ export default function CalendarPage() {
                             {format(d, "d")}
                           </div>
                           <div className="space-y-0.5">
-                            {blocks.slice(0, 3).map((b) => {
+                            {dayEvents.slice(0, 3).map((event) => {
                               const course = data.courses.find(
-                                (c) => c.id === b.course_id
+                                (c) => c.id === event.courseId
                               );
                               return (
                                 <div
-                                  key={b.id}
+                                  key={event.id}
                                   className="text-[10px] truncate flex items-center gap-1"
                                 >
                                   <span
                                     className={cn(
                                       "h-1.5 w-1.5 rounded-full shrink-0",
-                                      course
-                                        ? courseColorMap[course.color].bg
-                                        : "bg-border"
+                                      typeDot[event.type]
                                     )}
                                   />
-                                  <span className="truncate">{b.title}</span>
+                                  <span className="truncate">{event.title}</span>
                                 </div>
                               );
                             })}
-                            {blocks.length > 3 && (
+                            {dayEvents.length > 3 && (
                               <div className="text-[10px] text-muted">
-                                +{blocks.length - 3} more
+                                +{dayEvents.length - 3} more
                               </div>
                             )}
                           </div>
@@ -406,7 +429,7 @@ export default function CalendarPage() {
                   ["class", "Lecture"],
                   ["exam", "Exam"],
                   ["office_hours", "Office hours"],
-                  ["deadline", "Deadline"],
+                  ["deadline", "Assignment / quiz deadline"],
                 ] as const
               ).map(([k, label]) => (
                 <div key={k} className="flex items-center gap-2">

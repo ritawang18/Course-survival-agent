@@ -27,6 +27,7 @@ import {
   CheckCircle2,
   Plus,
 } from "lucide-react";
+import { AddAssignmentModal } from "@/components/assignments/AddAssignmentModal";
 
 type Filter = "all" | AssignmentStatus;
 
@@ -46,9 +47,10 @@ const statusMap: Record<AssignmentStatus, { label: string; variant: "muted" | "a
 };
 
 export default function AssignmentsPage() {
-  const { data, setAssignmentStatus } = useAppStore();
+  const { data, setAssignmentStatus, refreshData } = useAppStore();
   const [filter, setFilter] = useState<Filter>("all");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const counts = useMemo(() => {
     const c: Record<Filter, number> = {
@@ -86,7 +88,7 @@ export default function AssignmentsPage() {
         title="Assignments"
         description="Every task from every course, prioritized and dependency-aware."
         actions={
-          <Button variant="primary">
+          <Button variant="primary" onClick={() => setShowAddModal(true)}>
             <Plus className="h-4 w-4" />
             New assignment
           </Button>
@@ -278,6 +280,12 @@ export default function AssignmentsPage() {
           </div>
         )}
       </Drawer>
+
+      <AddAssignmentModal
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onCreated={refreshData}
+      />
     </div>
   );
 }
