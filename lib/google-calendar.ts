@@ -1,12 +1,45 @@
 import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 
-const CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
-const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
-const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI!;
+class MissingGoogleCalendarConfigError extends Error {
+  constructor(missingKeys: string[]) {
+    super(
+      `Google Calendar is not configured. Missing: ${missingKeys.join(", ")}`
+    );
+    this.name = "MissingGoogleCalendarConfigError";
+  }
+}
+
+function requireGoogleCalendarConfig() {
+  const config = {
+    clientId: process.env.GOOGLE_CLIENT_ID?.trim() ?? "",
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET?.trim() ?? "",
+    redirectUri: process.env.GOOGLE_REDIRECT_URI?.trim() ?? "",
+  };
+
+  const missingKeys: string[] = [];
+  if (!config.clientId) missingKeys.push("GOOGLE_CLIENT_ID");
+  if (!config.clientSecret) missingKeys.push("GOOGLE_CLIENT_SECRET");
+  if (!config.redirectUri) missingKeys.push("GOOGLE_REDIRECT_URI");
+
+  if (missingKeys.length > 0) {
+    throw new MissingGoogleCalendarConfigError(missingKeys);
+  }
+
+  return config;
+}
+
+export function isMissingGoogleCalendarConfigError(error: unknown): boolean {
+  return error instanceof MissingGoogleCalendarConfigError;
+}
 
 export function createOAuthClient(): OAuth2Client {
-  return new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
+  const config = requireGoogleCalendarConfig();
+  return new google.auth.OAuth2(
+    config.clientId,
+    config.clientSecret,
+    config.redirectUri
+  );
 }
 
 /** Build the URL users visit to grant access. */

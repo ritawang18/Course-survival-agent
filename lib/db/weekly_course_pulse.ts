@@ -105,7 +105,7 @@ export async function getWeeklyCoursePulse(
     throw new Error(`getWeeklyCoursePulse failed: ${error.message}`);
   }
 
-  return data ? mapRowToRecord(data as WeeklyCoursePulseRow) : null;
+  return data ? mapRowToRecord(data as unknown as WeeklyCoursePulseRow) : null;
 }
 
 export async function upsertWeeklyCoursePulse(
@@ -164,5 +164,5 @@ export async function upsertWeeklyCoursePulse(
     throw new Error(`upsertWeeklyCoursePulse failed: ${error.message}`);
   }
 
-  return mapRowToRecord(data as WeeklyCoursePulseRow);
+  return mapRowToRecord(data as unknown as WeeklyCoursePulseRow);
 }

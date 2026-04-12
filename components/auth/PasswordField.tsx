@@ -15,7 +15,8 @@ export const PasswordField = React.forwardRef<
   PasswordFieldProps
 >(({ label, hint, className, id, ...props }, ref) => {
   const [show, setShow] = React.useState(false);
-  const inputId = id ?? React.useId();
+  const generatedId = React.useId();
+  const inputId = id ?? generatedId;
   return (
     <div className={className}>
       <label htmlFor={inputId} className="text-xs font-medium">

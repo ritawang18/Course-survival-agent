@@ -6,6 +6,7 @@ import { getUserFromRequest, getServiceClient } from "@/lib/supabase/server";
 import { upsertSyllabus, upsertCourse } from "@/lib/db/courses";
 import { insertSyllabusAssignments, insertAssignment } from "@/lib/db/assignments";
 import { compileAndStoreGradePolicy } from "@/lib/skills/grade-policy-compiler";
+import { requireAIConfig } from "@/lib/ai/client";
 
 export const runtime = "nodejs"; // pdf-parse requires Node.js runtime
 
@@ -17,6 +18,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const aiConfig = await requireAIConfig(user.id);
     const form = await req.formData();
     const file = form.get("file");
     const kind = (form.get("kind") as string) ?? "syllabus"; // "syllabus" | "assignment"
@@ -60,7 +62,11 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const result = await parseAssignment(rawText);
+      const result = await parseAssignment(rawText, {
+        provider: aiConfig.provider,
+        model: aiConfig.model,
+        apiKey: aiConfig.apiKey,
+      });
       console.log(
         "[upload] parseAssignment result:\n" +
           JSON.stringify(result, null, 2)
@@ -84,7 +90,11 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Syllabus upload ─────────────────────────────────────────────────────
-    const result = await parseSyllabus(rawText);
+    const result = await parseSyllabus(rawText, {
+      provider: aiConfig.provider,
+      model: aiConfig.model,
+      apiKey: aiConfig.apiKey,
+    });
     console.log(
       "[upload] parseSyllabus result:\n" +
         JSON.stringify(result, null, 2)
@@ -106,7 +116,7 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (syllabusRow?.grading_policy) {
-        await compileAndStoreGradePolicy(syllabusId, syllabusRow.grading_policy);
+        await compileAndStoreGradePolicy(syllabusId, syllabusRow.grading_policy, aiConfig);
       }
     } catch (compileErr) {
       // Non-fatal: grade calculation falls back to default policy if compilation fails

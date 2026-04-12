@@ -62,7 +62,7 @@ export default function LoginPage() {
       description="Sign in to pick up where you left off."
       footer={
         <>
-          Don't have an account?{" "}
+          Don&rsquo;t have an account?{" "}
           <Link
             href="/signup"
             className="text-accent font-medium hover:underline"

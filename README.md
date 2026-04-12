@@ -1,4 +1,4 @@
-# Course Tracker
+# Course Survival Agent
 
 An AI-powered course tracker and study planner for students. Upload a syllabus, get your deadlines, exams, grading policy, and attendance rules extracted automatically — then let the app build a prioritized study plan around them.
 

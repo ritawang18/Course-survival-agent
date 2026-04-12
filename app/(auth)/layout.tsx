@@ -36,7 +36,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           </div>
           <div className="flex flex-col leading-tight">
             <span className="text-sm font-semibold tracking-tight">
-              Course Tracker
+              Course Survival Agent
             </span>
             <span className="text-[11px] text-muted">AI study planner</span>
           </div>
@@ -48,7 +48,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       </main>
 
       <footer className="relative z-10 px-6 py-6 text-center text-[11px] text-muted">
-        © {new Date().getFullYear()} Course Tracker · Built for students
+        © {new Date().getFullYear()} Course Survival Agent · Built for students
       </footer>
     </div>
   );

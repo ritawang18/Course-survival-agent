@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
 }
 
 /** POST /api/calendar/events — create a study block event
- *  Body: { summary, description?, start, end, colorId? }
+ *  Body: { summary, description?, start, end, colorId?, allDay?, timeZone? }
  */
 export async function POST(req: NextRequest) {
   const auth = await getCalendarClient();
@@ -34,14 +34,22 @@ export async function POST(req: NextRequest) {
   const { client } = auth;
 
   const body = await req.json();
-  const { summary, description, start, end, colorId } = body;
+  const { summary, description, start, end, colorId, allDay, timeZone } = body;
 
   if (!summary || !start || !end) {
     return NextResponse.json({ error: "summary, start, and end are required" }, { status: 400 });
   }
 
   try {
-    const eventId = await createEvent(client, { summary, description, start, end, colorId });
+    const eventId = await createEvent(client, {
+      summary,
+      description,
+      start,
+      end,
+      colorId,
+      allDay,
+      timeZone,
+    });
     return NextResponse.json({ eventId });
   } catch (err) {
     console.error("[events POST]", err);

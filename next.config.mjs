@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
+const distDir =
+  process.env.NEXT_DIST_DIR ??
+  (process.env.NODE_ENV === "production" ? ".next-prod" : ".next-dev");
+
 const nextConfig = {
   reactStrictMode: true,
+  distDir,
   // pdf-parse@2 is ESM-only and pulls in @napi-rs/canvas (native) +
   // pdfjs-dist@5 (worker imports). Webpack bundling of these into the
   // server route blows up with "Object.defineProperty called on non-object"

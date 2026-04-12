@@ -28,7 +28,7 @@ export function WeeklyWorkloadChart() {
       for (const b of blocks) {
         const h = hoursBetween(b.start, b.end);
         total += h;
-        byCourse.set(b.courseId, (byCourse.get(b.courseId) ?? 0) + h);
+        byCourse.set(b.course_id, (byCourse.get(b.course_id) ?? 0) + h);
       }
       return { date: d, total, byCourse: Array.from(byCourse.entries()) };
     });

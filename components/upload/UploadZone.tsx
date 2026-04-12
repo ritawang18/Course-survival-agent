@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { UploadCloud } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -26,19 +26,30 @@ interface UploadResponse {
 }
 
 export function UploadZone() {
-  const { pushToast, addUpload } = useAppStore();
+  const { data, pushToast, addUpload, refreshData } = useAppStore();
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadKind, setUploadKind] = useState<UploadKind>("syllabus");
+  const [selectedCourseId, setSelectedCourseId] = useState<string>("");
 
-  const uploadFile = async (file: File): Promise<UploadResponse> => {
-    const kind: UploadKind = file.name.toLowerCase().includes("assignment")
-      ? "assignment"
-      : "syllabus";
+  useEffect(() => {
+    if (!selectedCourseId && data.courses.length > 0) {
+      setSelectedCourseId(data.courses[0].id);
+    }
+  }, [data.courses, selectedCourseId]);
 
+  const uploadFile = async (
+    file: File,
+    kind: UploadKind,
+    courseId?: string
+  ): Promise<UploadResponse> => {
     const form = new FormData();
     form.append("file", file);
     form.append("kind", kind);
+    if (kind === "assignment" && courseId) {
+      form.append("course_id", courseId);
+    }
 
     // Forward the Supabase session JWT so the route's getUserFromRequest
     // gate doesn't 401 us.
@@ -92,12 +103,28 @@ export function UploadZone() {
   });
 
   const handleFiles = async (files: FileList | File[]) => {
+    if (uploadKind === "assignment" && !selectedCourseId) {
+      pushToast({
+        kind: "error",
+        title: "Choose a course first",
+        description: "Assignment uploads must be attached to an existing course.",
+      });
+      return;
+    }
+
     setUploading(true);
     const arr = Array.from(files);
     for (const file of arr) {
       try {
-        const payload = await uploadFile(file);
+        const payload = await uploadFile(
+          file,
+          uploadKind,
+          uploadKind === "assignment" ? selectedCourseId : undefined
+        );
         addUpload(buildArtifact(file, payload));
+        await refreshData().catch((err) => {
+          console.warn("[upload] refreshData failed", err);
+        });
         pushToast({
           kind: "success",
           title: "Parsing complete",
@@ -140,12 +167,52 @@ export function UploadZone() {
         Drop syllabi, notes, or assignment PDFs
       </h3>
       <p className="text-sm text-muted mt-1 max-w-sm">
-        We'll extract deadlines, grading weights, exam dates, and attendance
+        We&rsquo;ll extract deadlines, grading weights, exam dates, and attendance
         policies automatically.
       </p>
 
+      <div className="w-full max-w-md mt-5 text-left space-y-3">
+        <div>
+          <label className="text-xs font-medium">Upload type</label>
+          <select
+            value={uploadKind}
+            onChange={(e) => setUploadKind(e.target.value as UploadKind)}
+            className="mt-1.5 h-9 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:ring-4 focus:ring-[hsl(var(--accent)/0.12)] focus:border-accent/60"
+          >
+            <option value="syllabus">Syllabus / course file</option>
+            <option value="assignment">Assignment file</option>
+          </select>
+        </div>
+
+        {uploadKind === "assignment" && (
+          <div>
+            <label className="text-xs font-medium">Course</label>
+            <select
+              value={selectedCourseId}
+              onChange={(e) => setSelectedCourseId(e.target.value)}
+              className="mt-1.5 h-9 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:ring-4 focus:ring-[hsl(var(--accent)/0.12)] focus:border-accent/60"
+              disabled={data.courses.length === 0}
+            >
+              {data.courses.length === 0 ? (
+                <option value="">Upload a syllabus first to create a course</option>
+              ) : (
+                data.courses.map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.code ?? course.course_id} · {course.name ?? course.course_name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+        )}
+      </div>
+
       <div className="flex items-center gap-2 mt-5">
-        <Button onClick={() => fileRef.current?.click()} loading={uploading}>
+        <Button
+          onClick={() => fileRef.current?.click()}
+          loading={uploading}
+          disabled={uploadKind === "assignment" && data.courses.length === 0}
+        >
           <UploadCloud className="h-4 w-4" />
           {uploading ? "Uploading…" : "Choose files"}
         </Button>

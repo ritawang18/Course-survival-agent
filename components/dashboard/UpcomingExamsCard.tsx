@@ -22,7 +22,7 @@ export function UpcomingExamsCard() {
       </CardHeader>
       <CardBody className="space-y-2">
         {upcoming.map((e) => {
-          const course = data.courses.find((c) => c.id === e.courseId);
+          const course = data.courses.find((c) => c.id === e.course_id);
           const days = differenceInCalendarDays(new Date(e.date), new Date());
           const urgent = days <= 7;
           return (

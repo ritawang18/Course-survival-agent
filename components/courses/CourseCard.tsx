@@ -13,16 +13,16 @@ import { CalendarDays, AlertTriangle, ArrowUpRight } from "lucide-react";
 export function CourseCard({ course }: { course: Course }) {
   const { data } = useAppStore();
   const nextDeadline = [...data.assignments]
-    .filter((a) => a.courseId === course.id && a.status !== "done")
-    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0];
+    .filter((a) => a.course_id === course.id && a.status !== "done" && !!a.due_at)
+    .sort((a, b) => new Date(a.due_at!).getTime() - new Date(b.due_at!).getTime())[0];
   const nextExam = [...data.exams]
-    .filter((e) => e.courseId === course.id && new Date(e.date) >= new Date())
+    .filter((e) => e.course_id === course.id && new Date(e.date) >= new Date())
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
 
   const colors = courseColorMap[course.color];
-  const over = course.missedClasses >= course.attendancePolicy.maxAbsences;
+  const over = course.attendance_missed_count >= course.attendance_allowed_misses;
   const near =
-    course.missedClasses >= course.attendancePolicy.maxAbsences - 1 && !over;
+    course.attendance_missed_count >= course.attendance_allowed_misses - 1 && !over;
 
   return (
     <Link
@@ -69,7 +69,7 @@ export function CourseCard({ course }: { course: Course }) {
                 Next due: <span className="font-medium">{nextDeadline.title}</span>
               </span>
               <span className="text-muted ml-auto shrink-0">
-                {relativeDue(nextDeadline.dueDate)}
+                {relativeDue(nextDeadline.due_at!)}
               </span>
             </div>
           )}
@@ -91,7 +91,7 @@ export function CourseCard({ course }: { course: Course }) {
             variant={over ? "danger" : near ? "warning" : "muted"}
             className="font-mono"
           >
-            {course.missedClasses}/{course.attendancePolicy.maxAbsences} absences
+            {course.attendance_missed_count}/{course.attendance_allowed_misses} absences
           </Badge>
           {near && (
             <Badge variant="warning">

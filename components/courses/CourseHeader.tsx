@@ -36,7 +36,7 @@ export function CourseHeader({ course }: { course: Course }) {
                 <Clock className="h-3.5 w-3.5" /> {course.schedule}
               </div>
               <div className="flex items-center gap-1.5">
-                <MapPin className="h-3.5 w-3.5" /> {course.room}
+                <MapPin className="h-3.5 w-3.5" /> {course.location ?? "TBD"}
               </div>
               <div className="flex items-center gap-1.5">
                 <BookOpen className="h-3.5 w-3.5" /> {course.modules.length} modules
@@ -49,7 +49,7 @@ export function CourseHeader({ course }: { course: Course }) {
           <Stat label="Current" value={`${(course.current_grade_percent ?? 0).toFixed(1)}%`} />
           <Stat
             label="Absences"
-            value={`${course.missedClasses}/${course.attendancePolicy.maxAbsences}`}
+            value={`${course.attendance_missed_count}/${course.attendance_allowed_misses}`}
           />
           <Stat label="Modules" value={`${course.modules.filter(m => m.status === "done").length}/${course.modules.length}`} />
         </div>

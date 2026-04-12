@@ -343,15 +343,43 @@ async function findCourseMatch(context: ExtensionCanvasContext): Promise<DbCours
     .filter(Boolean) as string[];
 
   for (const courseKey of exactCourseKeys) {
-    const { data } = await supabase
+    const { data: byCourseId } = await supabase
       .from("courses")
       .select("id, course_id, course_name, instructor_name, attendance_allowed_misses, updated_at")
       .eq("course_id", courseKey)
       .order("updated_at", { ascending: false })
-      .limit(1);
+      .limit(5);
 
-    if (data && data.length > 0) {
-      return data[0] as DbCourseRow;
+    const { data: byCourseName } = await supabase
+      .from("courses")
+      .select("id, course_id, course_name, instructor_name, attendance_allowed_misses, updated_at")
+      .eq("course_name", courseKey)
+      .order("updated_at", { ascending: false })
+      .limit(5);
+
+    const candidates = [...(byCourseId ?? []), ...(byCourseName ?? [])] as DbCourseRow[];
+    if (candidates.length > 0) {
+      const best = candidates.sort((a, b) => {
+        const aScore = Math.max(
+          textScore(context.courseCode, a.course_id),
+          textScore(context.courseName, a.course_name ?? a.course_id)
+        );
+        const bScore = Math.max(
+          textScore(context.courseCode, b.course_id),
+          textScore(context.courseName, b.course_name ?? b.course_id)
+        );
+        return bScore - aScore;
+      })[0];
+
+      if (
+        best &&
+        Math.max(
+          textScore(context.courseCode, best.course_id),
+          textScore(context.courseName, best.course_name ?? best.course_id)
+        ) >= 6
+      ) {
+        return best;
+      }
     }
   }
 
@@ -364,7 +392,19 @@ async function findCourseMatch(context: ExtensionCanvasContext): Promise<DbCours
       .limit(5);
 
     if (data && data.length > 0) {
-      return data[0] as DbCourseRow;
+      const ranked = (data as DbCourseRow[])
+        .map((row) => ({
+          row,
+          score: Math.max(
+            textScore(context.courseName, row.course_name ?? row.course_id),
+            textScore(context.courseCode, row.course_id)
+          ),
+        }))
+        .sort((a, b) => b.score - a.score);
+
+      if (ranked[0] && ranked[0].score >= 6) {
+        return ranked[0].row;
+      }
     }
   }
 
@@ -545,23 +585,25 @@ export async function buildExtensionContextSummary(
   let riskSource: SummaryDataSource = "dom_fallback";
   let checklistSource: SummaryDataSource = "dom_fallback";
 
-  const upcomingAssignments = await fetchDashboardAssignments();
-  if (upcomingAssignments.length > 0 && context.dashboardDeadlines.length === 0) {
-    const dashboardDeadlines = upcomingAssignments
-      .map((item) => formatDeadlineLine(item, item.course))
-      .slice(0, 3);
+  if (context.pageType === "dashboard") {
+    const upcomingAssignments = await fetchDashboardAssignments();
+    if (upcomingAssignments.length > 0 && context.dashboardDeadlines.length === 0) {
+      const dashboardDeadlines = upcomingAssignments
+        .map((item) => formatDeadlineLine(item, item.course))
+        .slice(0, 3);
 
-    if (dashboardDeadlines.length > 0) {
-      context.dashboardDeadlines = dashboardDeadlines;
-      context.nearestDueText = context.nearestDueText ?? dashboardDeadlines[0];
+      if (dashboardDeadlines.length > 0) {
+        context.dashboardDeadlines = dashboardDeadlines;
+        context.nearestDueText = context.nearestDueText ?? dashboardDeadlines[0];
+      }
     }
-  }
 
-  if (context.pageType === "dashboard" && context.dashboardDeadlines.length > 0) {
-    courseSnapshot = {
-      currentPressure: context.dashboardDeadlines[0]
-    };
-    snapshotSource = "database";
+    if (context.dashboardDeadlines.length > 0) {
+      courseSnapshot = {
+        currentPressure: context.dashboardDeadlines[0]
+      };
+      snapshotSource = "database";
+    }
   }
 
   const matchedCourse = await findCourseMatch(context);
@@ -662,7 +704,10 @@ export async function buildExtensionContextSummary(
     alerts,
     checklist: checklistForContext(context),
     promptSuggestions: promptsForPage(context.pageType),
-    dataSource: "database",
+    dataSource:
+      snapshotSource === "database" || riskSource === "database" || checklistSource === "database"
+        ? "database"
+        : "dom_fallback",
     cardSources: {
       snapshot: snapshotSource,
       risk: riskSource,

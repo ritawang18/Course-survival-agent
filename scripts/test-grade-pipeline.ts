@@ -10,6 +10,7 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
+import { requireAIConfig } from "../lib/ai/client";
 import { compileAndStoreGradePolicy, getCompiledGradeCode } from "../lib/skills/grade-policy-compiler";
 import { runGradeCode } from "../lib/skills/grade-runner";
 import type { TemplateCategoryInput } from "../lib/skills/grade-template";
@@ -139,9 +140,10 @@ async function runCase(c: (typeof CASES)[number]) {
   console.log(`\n── ${c.label} ──`);
 
   await seedSyllabus(c.id, c.policy);
+  const aiConfig = await requireAIConfig();
 
-  console.log("  → Compiling policy with Gemini...");
-  const compiledCode = await compileAndStoreGradePolicy(c.id, c.policy);
+  console.log(`  → Compiling policy with ${aiConfig.provider}:${aiConfig.model}...`);
+  const compiledCode = await compileAndStoreGradePolicy(c.id, c.policy, aiConfig);
   console.log("  ✓ Compiled. Generated slot contents:\n");
 
   // Extract each named slot: everything between the opening header comment and the closing ─── line

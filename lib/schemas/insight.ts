@@ -25,6 +25,43 @@ export const RedditInsightSchema = z.object({
 });
 export type RedditInsight = z.infer<typeof RedditInsightSchema>;
 
+export const RmpSourceSchema = z.object({
+  professorName: z.string().optional(),
+  schoolName: z.string().optional(),
+  score: z.number().optional(),
+  numRatings: z.number().optional(),
+  wouldTakeAgain: z.number().nullable().optional(),
+  difficulty: z.number().nullable().optional(),
+  recentComments: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
+  profileUrl: z.string().nullable().optional(),
+});
+export type RmpSource = z.infer<typeof RmpSourceSchema>;
+
+export const RedditPostSourceSchema = z.object({
+  title: z.string(),
+  body: z.string(),
+  subreddit: z.string(),
+  score: z.number(),
+  numComments: z.number(),
+  url: z.string(),
+  permalink: z.string(),
+  createdUtc: z.number(),
+});
+export type RedditPostSource = z.infer<typeof RedditPostSourceSchema>;
+
+export const RedditSourceSchema = z.object({
+  posts: z.array(RedditPostSourceSchema),
+  totalSeen: z.number(),
+});
+export type RedditSource = z.infer<typeof RedditSourceSchema>;
+
+export const InsightSourcesSchema = z.object({
+  rmp: RmpSourceSchema.nullable().optional(),
+  reddit: RedditSourceSchema.nullable().optional(),
+});
+export type InsightSources = z.infer<typeof InsightSourcesSchema>;
+
 export const InstructorInsightSchema = z.object({
   courseId: z.string().optional(),
   professorName: z.string(),
@@ -32,6 +69,7 @@ export const InstructorInsightSchema = z.object({
   generatedAt: z.string().optional(),
   rmp: RmpInsightSchema.nullable(),
   reddit: RedditInsightSchema.nullable(),
+  sources: InsightSourcesSchema.optional(),
 });
 export type InstructorInsight = z.infer<typeof InstructorInsightSchema>;
 

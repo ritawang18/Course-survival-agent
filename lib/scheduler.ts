@@ -1,4 +1,5 @@
 import { extractJSON } from "@/lib/claude";
+import type { AIConfig } from "@/lib/ai/client";
 import type { StudyBlock, Priority, Difficulty } from "@/lib/store/types";
 
 // ── Input types ──────────────────────────────────────────────────────────────
@@ -71,7 +72,7 @@ Generate a study schedule as an array of study blocks. Return ONLY valid JSON in
   "studyBlocks": [
     {
       "id": "gen-1",
-      "courseId": "course-id",
+      "course_id": "course-id",
       "title": "CS 61A – Review recursion",
       "date": "2026-04-14",
       "start": "14:00",
@@ -103,7 +104,8 @@ Return ONLY the JSON object. No prose, no markdown fences.`;
 // ── Main function ─────────────────────────────────────────────────────────────
 
 export async function generateStudyPlan(
-  input: SchedulerInput
+  input: SchedulerInput,
+  options?: Partial<AIConfig>
 ): Promise<SchedulerOutput> {
   const horizon = input.horizonDays ?? 7;
 
@@ -132,11 +134,18 @@ export async function generateStudyPlan(
     2
   );
 
-  const result = await extractJSON<SchedulerOutput>(SYSTEM_PROMPT, userContent);
+  const result = await extractJSON<SchedulerOutput>(
+    SYSTEM_PROMPT,
+    userContent,
+    options
+  );
 
   // Ensure all blocks have unique ids
   result.studyBlocks = result.studyBlocks.map((b, i) => ({
     ...b,
+    course_id: (b as unknown as { course_id?: string; courseId?: string }).course_id
+      ?? (b as unknown as { course_id?: string; courseId?: string }).courseId
+      ?? "",
     id: b.id || `gen-${Date.now()}-${i}`,
   }));
 

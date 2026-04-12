@@ -7,6 +7,8 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import { useAppStore } from "@/lib/store/AppStoreProvider";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { buildCalendarExportEvents } from "@/lib/calendar/export-events";
 import { weekDays, isoDay, isSameDay, shortDay, format } from "@/lib/utils/date";
 import { courseColorMap } from "@/components/common/CourseColor";
 import { cn } from "@/lib/utils/cn";
@@ -18,7 +20,7 @@ import {
   endOfWeek,
   isSameMonth,
 } from "date-fns";
-import { CalendarClock, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { CalendarClock, ChevronLeft, ChevronRight, Download, RefreshCw } from "lucide-react";
 
 const typeDot = {
   study: "bg-accent",
@@ -29,8 +31,10 @@ const typeDot = {
 } as const;
 
 export default function CalendarPage() {
-  const { data, syncGoogleCalendar, syncing } = useAppStore();
+  const { data, syncGoogleCalendar, syncing, pushToast } = useAppStore();
   const [cursor, setCursor] = useState(new Date());
+  const [downloadingIcs, setDownloadingIcs] = useState(false);
+  const studyBlocks = data.studyBlocks;
 
   const monthDays = useMemo(() => {
     const start = startOfWeek(startOfMonth(cursor), { weekStartsOn: 1 });
@@ -44,10 +48,10 @@ export default function CalendarPage() {
     return out;
   }, [cursor]);
 
-  const weekDaysArr = weekDays(cursor);
+  const weekDaysArr = useMemo(() => weekDays(cursor), [cursor]);
   const blocksByDay = useMemo(() => {
-    const map: Record<string, typeof data.studyBlocks> = {};
-    for (const b of data.studyBlocks) {
+    const map: Record<string, typeof studyBlocks> = {};
+    for (const b of studyBlocks) {
       const key = b.date.slice(0, 10);
       (map[key] ??= []).push(b);
     }
@@ -55,12 +59,11 @@ export default function CalendarPage() {
       arr.sort((a, b) => a.start.localeCompare(b.start))
     );
     return map;
-  }, [data.studyBlocks]);
+  }, [studyBlocks]);
 
   // free slots: 08:00 - 22:00 minus existing blocks
   const freeSlots = useMemo(() => {
-    const days = weekDays();
-    return days.map((d) => {
+    return weekDaysArr.map((d) => {
       const key = isoDay(d).slice(0, 10);
       const blocks = blocksByDay[key] ?? [];
       const busy = blocks.map((b) => ({ s: toMin(b.start), e: toMin(b.end) }));
@@ -81,7 +84,72 @@ export default function CalendarPage() {
       if (cursorMin < endMin) free.push({ start: fmt(cursorMin), end: fmt(endMin) });
       return { date: d, slots: free.filter((s) => toMin(s.end) - toMin(s.start) >= 45) };
     });
-  }, [blocksByDay]);
+  }, [blocksByDay, weekDaysArr]);
+
+  const downloadIcs = async () => {
+    setDownloadingIcs(true);
+    try {
+      const events = buildCalendarExportEvents(data);
+      if (events.length === 0) {
+        pushToast({
+          kind: "info",
+          title: "Nothing to export",
+          description: "There are no upcoming study blocks or exams to include in the ICS file.",
+        });
+        return;
+      }
+
+      const supabase = getSupabaseClient();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        throw new Error("You must be signed in to export calendar data.");
+      }
+
+      const fileName = `course-survival-agent-${isoDay(new Date())}.ics`;
+      const res = await fetch("/api/calendar/ics", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          events,
+          calendarName: "Course Survival Agent",
+          fileName,
+        }),
+      });
+
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({ error: "Failed to export ICS" }));
+        throw new Error(error);
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+
+      pushToast({
+        kind: "success",
+        title: "ICS downloaded",
+        description: `Saved ${events.length} calendar item${events.length === 1 ? "" : "s"} to an ICS file.`,
+      });
+    } catch (err) {
+      pushToast({
+        kind: "error",
+        title: "ICS export failed",
+        description: err instanceof Error ? err.message : "Unexpected error",
+      });
+    } finally {
+      setDownloadingIcs(false);
+    }
+  };
 
   return (
     <div>
@@ -127,6 +195,14 @@ export default function CalendarPage() {
             >
               <RefreshCw className="h-4 w-4" />
               {syncing ? "Syncing…" : "Sync with Google"}
+            </Button>
+            <Button
+              variant="secondary"
+              loading={downloadingIcs}
+              onClick={() => downloadIcs()}
+            >
+              <Download className="h-4 w-4" />
+              {downloadingIcs ? "Preparing…" : "Download .ics"}
             </Button>
           </div>
         }
@@ -177,7 +253,7 @@ export default function CalendarPage() {
                         >
                           {blocks.map((b) => {
                             const course = data.courses.find(
-                              (c) => c.id === b.courseId
+                              (c) => c.id === b.course_id
                             );
                             const colors = course ? courseColorMap[course.color] : null;
                             return (
@@ -245,7 +321,7 @@ export default function CalendarPage() {
                           <div className="space-y-0.5">
                             {blocks.slice(0, 3).map((b) => {
                               const course = data.courses.find(
-                                (c) => c.id === b.courseId
+                                (c) => c.id === b.course_id
                               );
                               return (
                                 <div

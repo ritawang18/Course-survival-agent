@@ -1,10 +1,11 @@
 "use client";
 
-import { Bell, Search, Command, Plus, Menu, LogOut } from "lucide-react";
+import { Bell, Search, Command, Plus, Menu, LogOut, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import Link from "next/link";
 
 export function Topbar({ onOpenSidebar }: { onOpenSidebar?: () => void }) {
   const [commandOpen, setCommandOpen] = useState(false);
@@ -97,6 +98,14 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar?: () => void }) {
                   {email ?? "Loading…"}
                 </div>
               </div>
+              <Link
+                href="/settings"
+                onClick={() => setAccountOpen(false)}
+                className="w-full text-left px-3 py-2.5 text-sm text-text/90 hover:bg-[hsl(var(--surface-2))] flex items-center gap-2"
+              >
+                <KeyRound className="h-4 w-4" />
+                Tokens & integrations
+              </Link>
               <button
                 onClick={handleSignOut}
                 disabled={signingOut}

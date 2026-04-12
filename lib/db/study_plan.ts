@@ -9,6 +9,10 @@ interface StudyPlanBlock {
   difficulty: string;
 }
 
+function isMissingTableError(message: string) {
+  return /does not exist|schema cache|relation .* does not exist/i.test(message);
+}
+
 /**
  * Upsert study plan rows into the study_plan table.
  * One row per course (study_plan.id is a one-to-one FK to courses.id).
@@ -32,5 +36,11 @@ export async function upsertStudyPlan(blocks: StudyPlanBlock[]): Promise<void> {
     .from("study_plan")
     .upsert(rows, { onConflict: "id" });
 
-  if (error) throw new Error(`upsertStudyPlan failed: ${error.message}`);
+  if (error) {
+    if (isMissingTableError(error.message)) {
+      console.warn(`[study_plan] table unavailable: ${error.message}`);
+      return;
+    }
+    throw new Error(`upsertStudyPlan failed: ${error.message}`);
+  }
 }

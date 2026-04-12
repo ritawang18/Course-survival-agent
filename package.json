@@ -3,10 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "dev": "node scripts/prepare-next-runtime.mjs dev && next dev",
+    "build": "node scripts/prepare-next-runtime.mjs build && next build",
+    "start": "node scripts/prepare-next-runtime.mjs start && next start",
+    "lint": "next lint",
+    "typecheck": "node scripts/prepare-next-runtime.mjs typecheck && tsc --noEmit --incremental false"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.69",

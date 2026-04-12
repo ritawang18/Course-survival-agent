@@ -10,22 +10,21 @@
  *      re-clicks feel instant.
  *   3. Fan out to skills: fetchRmp + fetchReddit in parallel. Either side may
  *      return null — that's fine, the AI is told to use "unavailable".
- *   4. generateObject(anthropic) → { rmp, reddit } following InsightGenerationSchema.
+ *   4. generateObjectWithAI → { rmp, reddit } following InsightGenerationSchema.
  *   5. Persist to Supabase, return the assembled InstructorInsight.
  *
  * Error response shape: { ok: false, reason: 'invalid_input'|'network'|'ai_validation'|'internal' }
  */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { generateObject } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
 import { fetchRmp } from "@/lib/skills/fetchRmp";
 import { fetchReddit } from "@/lib/skills/fetchReddit";
 import {
   InsightGenerationSchema,
   type InstructorInsight,
 } from "@/lib/schemas/insight";
-import { getServiceClient } from "@/lib/supabase/server";
+import { generateObjectWithAI, resolveAIConfig } from "@/lib/ai/client";
+import { getServiceClient, getUserFromRequest } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -44,6 +43,8 @@ function errorResponse(reason: ErrorReason, status: number, detail?: string) {
 }
 
 export async function POST(req: NextRequest) {
+  const user = await getUserFromRequest(req);
+
   // 1. Validate input
   let body: z.infer<typeof RequestSchema>;
   try {
@@ -74,7 +75,9 @@ export async function POST(req: NextRequest) {
   const cutoff = new Date(Date.now() - CACHE_WINDOW_MS).toISOString();
   const { data: cachedRows, error: cacheErr } = await supabase
     .from(TABLE)
-    .select("rmp, reddit, course_id, generated_at, professor_name, university_name")
+    .select(
+      "rmp, reddit, raw_sources, course_id, generated_at, professor_name, university_name"
+    )
     .ilike("professor_name", professorName)
     .ilike("university_name", universityName)
     .gte("generated_at", cutoff)
@@ -93,6 +96,7 @@ export async function POST(req: NextRequest) {
       generatedAt: row.generated_at,
       rmp: row.rmp ?? null,
       reddit: row.reddit ?? null,
+      sources: row.raw_sources ?? undefined,
     };
     return NextResponse.json({ ok: true, insight, cached: true });
   }
@@ -103,30 +107,67 @@ export async function POST(req: NextRequest) {
     fetchReddit({ professorName, universityName }),
   ]);
 
-  // 4. Summarize with Claude via generateObject
+  const aiConfig = await resolveAIConfig(user?.id);
+  if (!aiConfig) {
+    return errorResponse(
+      "internal",
+      500,
+      "No AI provider configured. Save provider/model/apiKey in settings or set server environment keys."
+    );
+  }
+
+  // 4. Summarize with the configured provider via generateObjectWithAI
   let generation: z.infer<typeof InsightGenerationSchema>;
   try {
-    const result = await generateObject({
-      model: anthropic("claude-sonnet-4-5"),
+    const result = await generateObjectWithAI({
+      config: aiConfig,
       schema: InsightGenerationSchema,
       system:
         "You summarize public feedback about a university professor for a student-facing course tracker. " +
         "Be concise, fair, and grounded ONLY in the raw data provided. " +
+        "Return a valid JSON object only. " +
+        "The JSON must match this exact shape: " +
+        '{"rmp":{"score":number,"sentiment":"positive|mixed|negative|unavailable","summary":string,"quotes":string[],"tags":string[]},"reddit":{"sentiment":"positive|mixed|negative|unavailable","summary":string,"quotes":string[],"tags":string[]}}. ' +
         'If a source is null or empty, set its sentiment to "unavailable", set summary to a short note like ' +
         '"No data found.", and return empty arrays for quotes and tags. ' +
         "Never invent quotes or scores. The RMP score must be the numeric average from the raw data, " +
         "or 0 if RMP is unavailable. Quotes must be verbatim excerpts from the raw input. " +
-        "Tags should be 3-6 short descriptors (e.g. 'tough grader', 'engaging lectures').",
-      prompt: JSON.stringify({
-        professorName,
-        universityName,
-        rmpRaw,
-        redditRaw,
-      }),
+        "Tags should be 3-6 short descriptors (e.g. 'tough grader', 'engaging lectures'). " +
+        "Never omit required keys, never use null for nested fields, and never return markdown.",
+      prompt:
+        "Return only JSON.\n\n" +
+        "Allowed sentiment values: positive, mixed, negative, unavailable.\n\n" +
+        "Required output example:\n" +
+        JSON.stringify(
+          {
+            rmp: {
+              score: 0,
+              sentiment: "unavailable",
+              summary: "No data found.",
+              quotes: [],
+              tags: [],
+            },
+            reddit: {
+              sentiment: "unavailable",
+              summary: "No data found.",
+              quotes: [],
+              tags: [],
+            },
+          },
+          null,
+          2
+        ) +
+        "\n\nRaw input:\n" +
+        JSON.stringify({
+          professorName,
+          universityName,
+          rmpRaw,
+          redditRaw,
+        }),
     });
     generation = result.object;
   } catch (err) {
-    console.error("[professor-insights] generateObject failed", err);
+    console.error("[professor-insights] generateObjectWithAI failed", err);
     const message = err instanceof Error ? err.message : "AI generation failed";
     // Distinguish schema validation from network-y / auth errors loosely.
     const reason: ErrorReason = /schema|validation|parse/i.test(message)
@@ -143,6 +184,10 @@ export async function POST(req: NextRequest) {
     generatedAt,
     rmp: generation.rmp,
     reddit: generation.reddit,
+    sources: {
+      rmp: rmpRaw,
+      reddit: redditRaw,
+    },
   };
 
   // 5. Persist (best-effort — surface failure but still return the insight)

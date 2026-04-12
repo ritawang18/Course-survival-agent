@@ -8,7 +8,7 @@ export const STORAGE_KEYS = {
 export const DEFAULT_SETTINGS: ExtensionSettings = {
   backendBaseUrl: "http://localhost:3000/api",
   webAppBaseUrl: "http://localhost:3000/dashboard",
-  webAppTokenUrl: "",
+  webAppTokenUrl: "http://localhost:3000/settings",
   enableCanvasApiEnrichment: true,
   debugMode: false
 };

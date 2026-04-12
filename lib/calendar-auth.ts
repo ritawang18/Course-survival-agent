@@ -1,6 +1,11 @@
 import { cookies } from "next/headers";
 import { OAuth2Client } from "google-auth-library";
-import { createOAuthClient, hydrateClient, TokenSet } from "@/lib/google-calendar";
+import {
+  createOAuthClient,
+  hydrateClient,
+  isMissingGoogleCalendarConfigError,
+  TokenSet,
+} from "@/lib/google-calendar";
 
 export interface AuthGuardSuccess {
   ok: true;
@@ -48,7 +53,20 @@ export async function getCalendarClient(): Promise<AuthGuardResult> {
     return { ok: false, status: 401, error: "Missing access token. Please re-authorize." };
   }
 
-  const client = createOAuthClient();
+  let client: OAuth2Client;
+  try {
+    client = createOAuthClient();
+  } catch (error) {
+    return {
+      ok: false,
+      status: isMissingGoogleCalendarConfigError(error) ? 500 : 500,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Google Calendar is not configured.",
+    };
+  }
+
   hydrateClient(client, tokens);
 
   // Refresh if expired or expiring within 5 minutes

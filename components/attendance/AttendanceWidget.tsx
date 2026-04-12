@@ -26,8 +26,8 @@ export function AttendanceWidget({ courseId }: { courseId?: string }) {
       </CardHeader>
       <CardBody className="space-y-3">
         {courses.map((c) => {
-          const used = c.missedClasses;
-          const max = c.attendancePolicy.maxAbsences;
+          const used = c.attendance_missed_count;
+          const max = c.attendance_allowed_misses;
           const near = used >= max - 1 && used < max;
           const over = used >= max;
           return (
@@ -65,7 +65,7 @@ export function AttendanceWidget({ courseId }: { courseId?: string }) {
                 <div className="flex items-start gap-2 text-[11px] text-warning">
                   <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
                   <span>
-                    One more absence triggers a {c.attendancePolicy.penaltyPerAbsence}% grade penalty.
+                    One more absence triggers a {c.attendancePolicy?.penaltyPerAbsence ?? 0}% grade penalty.
                   </span>
                 </div>
               )}

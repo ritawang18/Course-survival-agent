@@ -51,7 +51,7 @@ export default function UploadPage() {
             <CardBody className="text-xs text-muted space-y-3 leading-relaxed">
               <div className="flex gap-2">
                 <span className="text-accent font-mono">01</span>
-                <p>Files are OCR'd when needed, then parsed into structured sections.</p>
+                <p>Files are OCR-processed when needed, then parsed into structured sections.</p>
               </div>
               <div className="flex gap-2">
                 <span className="text-accent font-mono">02</span>

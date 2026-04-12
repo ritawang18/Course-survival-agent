@@ -116,6 +116,50 @@ create table if not exists study_plan (
   created_at timestamptz not null default now()
 );
 
+-- ─── Planner / grades persistence ──────────────────────────────────────────
+
+create table if not exists course_grades (
+  id uuid primary key references courses(id) on delete cascade,
+  current_percent numeric,
+  current_letter_grade text,
+  projected_percent numeric,
+  projected_letter_grade text,
+  is_pf boolean not null default false,
+  calculated_at timestamptz not null default now()
+);
+
+create table if not exists study_plan (
+  id uuid primary key references courses(id) on delete cascade,
+  course_id text not null,
+  title text not null,
+  type text not null,
+  priority text not null,
+  difficulty text not null,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists study_plan_blocks (
+  id uuid primary key default gen_random_uuid(),
+  course_uuid uuid not null references courses(id) on delete cascade,
+  course_id text not null,
+  title text not null,
+  date date not null,
+  start_time time not null,
+  end_time time not null,
+  type text not null,
+  priority text,
+  difficulty text,
+  conflict boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_study_plan_blocks_course_uuid
+  on study_plan_blocks (course_uuid);
+
+create index if not exists idx_study_plan_blocks_date
+  on study_plan_blocks (date);
+
 -- ─── Professor insights (used by /api/professor-insights) ─────────────────
 
 create table if not exists professor_insights (
@@ -158,3 +202,26 @@ create table if not exists weekly_course_pulse (
 
 create unique index if not exists idx_weekly_course_pulse_course_anchor
   on weekly_course_pulse (course_uuid, anchor_date);
+
+-- ─── User integration tokens (used by settings UI + backend token lookup) ──
+
+create table if not exists user_integration_tokens (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  provider text not null check (provider in ('llm', 'canvas')),
+  token text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint user_integration_tokens_pkey primary key (user_id, provider)
+);
+
+create index if not exists idx_user_integration_tokens_user_id
+  on user_integration_tokens (user_id);
+
+create table if not exists user_llm_settings (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  provider text not null check (provider in ('openai', 'anthropic', 'gemini')),
+  model text not null,
+  api_key text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);

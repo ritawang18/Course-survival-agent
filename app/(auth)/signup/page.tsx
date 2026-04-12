@@ -130,7 +130,7 @@ export default function SignupPage() {
             <span className="font-medium">{email}</span>.
           </p>
           <p className="text-xs text-muted mt-2">
-            Didn't receive it? Check spam or request a new link.
+            Didn&rsquo;t receive it? Check spam or request a new link.
           </p>
         </div>
       </AuthCard>

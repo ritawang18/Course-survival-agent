@@ -1,4 +1,5 @@
 import type { InstructorInsight } from "@/lib/schemas/insight";
+import type { WeeklyCoursePulseRecord } from "@/lib/schemas/weekly-course-pulse";
 
 export type CourseColor = "indigo" | "emerald" | "amber" | "rose" | "sky" | "violet";
 
@@ -61,6 +62,7 @@ export interface Course {
   files: UploadedFile[];
   modules: LectureModule[];
   aiSummary: string;
+  weeklyPulse?: WeeklyCoursePulseRecord;
   officeHourQuestions: string[];
   mockExamQuestions: { q: string; a: string }[];
   dependencyNotes: { from: string; to: string; why: string }[];

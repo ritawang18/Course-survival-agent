@@ -1,4 +1,5 @@
 import { extractJSON } from "@/lib/claude";
+import type { AIProvider } from "@/lib/ai/models";
 
 export interface ParsedDeadline {
   label: string;
@@ -79,10 +80,14 @@ Rules:
 - If a field has no information, use an empty array [] or null.
 - Do NOT invent data. Only extract what is actually in the document.`;
 
-export async function parseSyllabus(text: string): Promise<SyllabusParseResult> {
+export async function parseSyllabus(
+  text: string,
+  options?: { provider?: AIProvider; apiKey?: string; model?: string }
+): Promise<SyllabusParseResult> {
   const truncated = text.slice(0, 12000); // Claude context guard
   return extractJSON<SyllabusParseResult>(
     SYSTEM_PROMPT,
-    `Parse this syllabus:\n\n${truncated}`
+    `Parse this syllabus:\n\n${truncated}`,
+    options
   );
 }

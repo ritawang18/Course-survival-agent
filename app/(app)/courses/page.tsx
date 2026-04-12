@@ -14,13 +14,22 @@ import { cn } from "@/lib/utils/cn";
 export default function CoursesPage() {
   const { data } = useAppStore();
   const [view, setView] = useState<"grid" | "list">("grid");
+  const avgGrade =
+    data.courses.length > 0
+      ? data.courses.reduce((sum, course) => sum + (course.current_grade_percent ?? 0), 0) /
+        data.courses.length
+      : 0;
 
   return (
     <div>
       <PageHeader
-        eyebrow="Spring 2026"
+        eyebrow={`${data.courses.length} courses`}
         title="Your courses"
-        description="5 courses · 18 credits · avg. grade 86.2%"
+        description={
+          data.courses.length > 0
+            ? `Average grade ${avgGrade.toFixed(1)}% across your current course set.`
+            : "Upload a syllabus or ingest course data to start building your course workspace."
+        }
         actions={
           <div className="flex items-center gap-2">
             <div className="inline-flex items-center gap-1 p-1 muted-surface rounded-xl">
@@ -50,6 +59,12 @@ export default function CoursesPage() {
           </div>
         }
       />
+
+      {data.courses.length === 0 && (
+        <div className="card-surface p-5 mb-4 text-sm text-muted">
+          No courses found yet. Use the upload flow to create courses from a syllabus, then this page will fill in automatically.
+        </div>
+      )}
 
       {view === "grid" ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -102,7 +117,7 @@ export default function CoursesPage() {
                     </div>
                   </td>
                   <td className="px-5 py-3 text-right font-mono text-xs text-muted">
-                    {c.missedClasses}/{c.attendancePolicy.maxAbsences}
+                    {c.attendance_missed_count}/{c.attendance_allowed_misses}
                   </td>
                 </tr>
               ))}

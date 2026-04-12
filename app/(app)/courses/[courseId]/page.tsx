@@ -7,6 +7,7 @@ import { GradingWeightsCard } from "@/components/courses/GradingWeightsCard";
 import { LectureModulesList } from "@/components/courses/LectureModulesList";
 import { FilesCard } from "@/components/courses/FilesCard";
 import { AIInsightsCard } from "@/components/courses/AIInsightsCard";
+import { WeeklyCoursePulseCard } from "@/components/courses/WeeklyCoursePulseCard";
 import { OfficeHourQuestionsCard } from "@/components/courses/OfficeHourQuestionsCard";
 import { MockExamCard } from "@/components/courses/MockExamCard";
 import { DependencyGraphCard } from "@/components/courses/DependencyGraphCard";
@@ -19,6 +20,13 @@ import { relativeDue } from "@/lib/utils/date";
 import { ArrowLeft, CalendarDays } from "lucide-react";
 import Link from "next/link";
 
+function priorityFromImportanceScore(score?: number) {
+  if (score == null) return null;
+  if (score >= 80) return "urgent" as const;
+  if (score >= 50) return "important" as const;
+  return "optional" as const;
+}
+
 export default function CourseDetailPage() {
   const params = useParams<{ courseId: string }>();
   const { data } = useAppStore();
@@ -26,9 +34,9 @@ export default function CourseDetailPage() {
   if (!course) return notFound();
 
   const courseAssignments = data.assignments.filter(
-    (a) => a.courseId === course.id
+    (a) => a.course_id === course.id
   );
-  const courseExams = data.exams.filter((e) => e.courseId === course.id);
+  const courseExams = data.exams.filter((e) => e.course_id === course.id);
 
   return (
     <div>
@@ -56,6 +64,7 @@ export default function CourseDetailPage() {
           <TabsContent value="overview" className="mt-5">
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-5">
               <div className="xl:col-span-2 space-y-4 lg:space-y-5">
+                <WeeklyCoursePulseCard course={course} />
                 <AIInsightsCard course={course} />
                 <GradingWeightsCard course={course} />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-5">
@@ -78,7 +87,9 @@ export default function CourseDetailPage() {
                 <Badge variant="muted">{courseAssignments.length}</Badge>
               </CardHeader>
               <CardBody className="space-y-1">
-                {courseAssignments.map((a) => (
+                {courseAssignments.map((a) => {
+                  const priority = priorityFromImportanceScore(a.importance_score);
+                  return (
                   <div
                     key={a.id}
                     className="flex items-center gap-3 p-3 rounded-xl hover:bg-[hsl(var(--surface-2))] transition-colors"
@@ -86,10 +97,10 @@ export default function CourseDetailPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium truncate">{a.title}</span>
-                        <PriorityBadge priority={a.priority} />
+                        {priority && <PriorityBadge priority={priority} />}
                       </div>
                       <div className="text-[11px] text-muted mt-0.5">
-                        {relativeDue(a.dueDate)} · {a.estimatedHours}h est.
+                        {a.due_at ? relativeDue(a.due_at) : "No due date"} · {a.estimated_hours ?? "—"}h est.
                       </div>
                     </div>
                     <Badge
@@ -106,7 +117,8 @@ export default function CourseDetailPage() {
                       {a.status.replace("_", " ")}
                     </Badge>
                   </div>
-                ))}
+                  );
+                })}
               </CardBody>
             </Card>
           </TabsContent>

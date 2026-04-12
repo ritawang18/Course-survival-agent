@@ -14,21 +14,41 @@ import { RotateCcw, TrendingUp, AlertCircle } from "lucide-react";
 
 export default function GradesPage() {
   const { data, updateGradeScore } = useAppStore();
-  const [selectedId, setSelectedId] = useState<string>(data.courses[0].id);
+  const [selectedId, setSelectedId] = useState<string>(data.courses[0]?.id ?? "");
   const [optimistic, setOptimistic] = useState(85);
 
-  const selected = data.courses.find((c) => c.id === selectedId)!;
+  const selected = data.courses.find((c) => c.id === selectedId) ?? data.courses[0];
+  const selectedWeights = useMemo(
+    () => selected?.gradingWeights ?? [],
+    [selected]
+  );
 
   const current = useMemo(
-    () => weightedGrade(selected.gradingWeights),
-    [selected.gradingWeights]
+    () => weightedGrade(selectedWeights),
+    [selectedWeights]
   );
   const projected = useMemo(
-    () => projectedFinal(selected.gradingWeights, optimistic),
-    [selected.gradingWeights, optimistic]
+    () => projectedFinal(selectedWeights, optimistic),
+    [selectedWeights, optimistic]
   );
+  const missing = selectedWeights.filter((g) => g.earned == null);
 
-  const missing = selected.gradingWeights.filter((g) => g.earned == null);
+  if (!selected) {
+    return (
+      <div>
+        <PageHeader
+          eyebrow="What-if scenarios"
+          title="Grade calculator"
+          description="Load at least one course with grading data to start modeling outcomes."
+        />
+        <Card>
+          <CardBody className="py-10 text-center text-sm text-muted">
+            No courses are available yet. Upload a syllabus and generate course data first, then come back to model grade scenarios.
+          </CardBody>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div>

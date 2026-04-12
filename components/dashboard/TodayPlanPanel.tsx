@@ -40,7 +40,7 @@ export function TodayPlanPanel() {
     <Card>
       <CardHeader>
         <div>
-          <CardTitle>Today's plan</CardTitle>
+          <CardTitle>Today&rsquo;s plan</CardTitle>
           <p className="text-xs text-muted mt-1">
             {blocks.length} blocks · {blocks.filter((b) => b.type === "study").length} study sessions
           </p>
@@ -55,7 +55,7 @@ export function TodayPlanPanel() {
         ) : (
           <ul className="space-y-1">
             {blocks.map((b) => {
-              const course = data.courses.find((c) => c.id === b.courseId);
+              const course = data.courses.find((c) => c.id === b.course_id);
               const colors = course ? courseColorMap[course.color] : null;
               const isChecked = checked[b.id];
               return (

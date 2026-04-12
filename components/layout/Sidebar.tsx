@@ -12,8 +12,10 @@ import {
   Sparkles,
   GraduationCap,
   Lightbulb,
+  KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { useAppStore } from "@/lib/store/AppStoreProvider";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -24,10 +26,14 @@ const navItems = [
   { href: "/upload", label: "Upload", icon: UploadCloud },
   { href: "/grades", label: "Grade Calculator", icon: Calculator },
   { href: "/insights", label: "Instructor Insights", icon: Lightbulb },
+  { href: "/settings", label: "Tokens & Integrations", icon: KeyRound },
 ];
 
 export function Sidebar({ className }: { className?: string }) {
   const pathname = usePathname();
+  const { data } = useAppStore();
+  const activeAssignments = data.assignments.filter((item) => item.status !== "done").length;
+
   return (
     <aside
       className={cn(
@@ -41,7 +47,7 @@ export function Sidebar({ className }: { className?: string }) {
           <GraduationCap className="h-5 w-5 text-accent" />
         </div>
         <div className="flex flex-col leading-tight">
-          <span className="text-sm font-semibold tracking-tight">Course Tracker</span>
+          <span className="text-sm font-semibold tracking-tight">Course Survival Agent</span>
           <span className="text-[11px] text-muted">AI study planner</span>
         </div>
       </div>
@@ -83,11 +89,13 @@ export function Sidebar({ className }: { className?: string }) {
       <div className="p-3">
         <div className="card-surface p-3 flex items-center gap-3">
           <div className="h-9 w-9 rounded-full bg-gradient-to-br from-accent to-violet-500 flex items-center justify-center text-white text-xs font-semibold">
-            M
+            CSA
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-medium truncate">Marco Silva</div>
-            <div className="text-[11px] text-muted truncate">Spring 2026 · 18 units</div>
+            <div className="text-xs font-medium truncate">Course Survival Agent</div>
+            <div className="text-[11px] text-muted truncate">
+              {data.courses.length} courses · {activeAssignments} active tasks
+            </div>
           </div>
         </div>
       </div>

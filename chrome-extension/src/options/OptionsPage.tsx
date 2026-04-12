@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import type { ExtensionSettings } from "../lib/types/settings";
 import { getSettings, saveSettings } from "../lib/storage/settings-store";
 import { clearCanvasToken, getCanvasToken, saveCanvasToken } from "../lib/storage/token-store";
+import { DEFAULT_SETTINGS } from "../shared/constants";
 
 export function OptionsPage() {
-  const [settings, setSettings] = useState<ExtensionSettings | null>(null);
+  const [settings, setSettings] = useState<ExtensionSettings>(DEFAULT_SETTINGS);
+  const [loading, setLoading] = useState(true);
   const [token, setToken] = useState("");
   const [saved, setSaved] = useState(false);
 
@@ -12,10 +14,11 @@ export function OptionsPage() {
     void (async () => {
       setSettings(await getSettings());
       setToken((await getCanvasToken()) ?? "");
+      setLoading(false);
     })();
   }, []);
 
-  if (!settings) {
+  if (loading) {
     return <main className="page-shell"><section className="card">Loading settings…</section></main>;
   }
 
@@ -72,9 +75,10 @@ export function OptionsPage() {
             type="url"
             value={settings.backendBaseUrl}
             onChange={(event) =>
-              setSettings((current) =>
-                current ? { ...current, backendBaseUrl: event.target.value } : current
-              )
+              setSettings((current) => ({
+                ...current,
+                backendBaseUrl: event.target.value
+              }))
             }
           />
         </label>
@@ -85,9 +89,10 @@ export function OptionsPage() {
             type="url"
             value={settings.webAppBaseUrl}
             onChange={(event) =>
-              setSettings((current) =>
-                current ? { ...current, webAppBaseUrl: event.target.value } : current
-              )
+              setSettings((current) => ({
+                ...current,
+                webAppBaseUrl: event.target.value
+              }))
             }
           />
         </label>
@@ -98,11 +103,12 @@ export function OptionsPage() {
             type="url"
             value={settings.webAppTokenUrl}
             onChange={(event) =>
-              setSettings((current) =>
-                current ? { ...current, webAppTokenUrl: event.target.value } : current
-              )
+              setSettings((current) => ({
+                ...current,
+                webAppTokenUrl: event.target.value
+              }))
             }
-            placeholder="Add this after the token page exists in the web app"
+            placeholder="Defaults to the Web UI /settings page"
           />
         </label>
 
@@ -111,11 +117,10 @@ export function OptionsPage() {
             type="checkbox"
             checked={settings.enableCanvasApiEnrichment}
             onChange={(event) =>
-              setSettings((current) =>
-                current
-                  ? { ...current, enableCanvasApiEnrichment: event.target.checked }
-                  : current
-              )
+              setSettings((current) => ({
+                ...current,
+                enableCanvasApiEnrichment: event.target.checked
+              }))
             }
           />
           <span>Use token for richer Canvas API enrichment</span>
@@ -126,9 +131,10 @@ export function OptionsPage() {
             type="checkbox"
             checked={settings.debugMode}
             onChange={(event) =>
-              setSettings((current) =>
-                current ? { ...current, debugMode: event.target.checked } : current
-              )
+              setSettings((current) => ({
+                ...current,
+                debugMode: event.target.checked
+              }))
             }
           />
           <span>Enable debug mode in the side panel</span>

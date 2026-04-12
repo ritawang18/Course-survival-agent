@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateStudyPlan, SchedulerInput } from "@/lib/scheduler";
 import { getUserFromRequest } from "@/lib/supabase/server";
 import { upsertStudyPlan } from "@/lib/db/study_plan";
+import { requireAIConfig } from "@/lib/ai/client";
+import { replaceStudyPlanBlocks } from "@/lib/db/study_plan_blocks";
 
 export const runtime = "nodejs";
 
@@ -25,6 +27,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = (await req.json()) as SchedulerInput;
+    const aiConfig = await requireAIConfig(user.id);
 
     const { assignments, exams, freeWindows } = body;
 
@@ -35,7 +38,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await generateStudyPlan(body);
+    const result = await generateStudyPlan(body, {
+      provider: aiConfig.provider,
+      model: aiConfig.model,
+      apiKey: aiConfig.apiKey,
+    });
 
     // ── Persist to study_plan (one row per course, most urgent block wins) ────
     const courseUuidMap = Object.fromEntries(
@@ -66,9 +73,29 @@ export async function POST(req: NextRequest) {
         difficulty: block.difficulty ?? "medium",
       }));
 
+    const blockRows = result.studyBlocks
+      .filter((block) => courseUuidMap[block.course_id])
+      .map((block) => ({
+        courseUuid: courseUuidMap[block.course_id],
+        courseId: block.course_id,
+        title: block.title,
+        date: block.date,
+        start: block.start,
+        end: block.end,
+        type: block.type,
+        priority: block.priority ?? null,
+        difficulty: block.difficulty ?? null,
+        conflict: block.conflict ?? false,
+      }));
+
     if (planRows.length > 0) {
       await upsertStudyPlan(planRows);
     }
+
+    await replaceStudyPlanBlocks(
+      Object.values(courseUuidMap),
+      blockRows
+    );
 
     return NextResponse.json(result);
   } catch (err) {

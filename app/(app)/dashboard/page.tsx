@@ -9,6 +9,7 @@ import { WeeklyWorkloadChart } from "@/components/dashboard/WeeklyWorkloadChart"
 import { UpcomingExamsCard } from "@/components/dashboard/UpcomingExamsCard";
 import { GradeSnapshotCard } from "@/components/dashboard/GradeSnapshotCard";
 import { AttendanceWidget } from "@/components/attendance/AttendanceWidget";
+import { WeeklyPulseSnapshotCard } from "@/components/dashboard/WeeklyPulseSnapshotCard";
 import { useAppStore } from "@/lib/store/AppStoreProvider";
 import { GraduationCap, AlertTriangle, Clock3, TrendingUp } from "lucide-react";
 import { gpa } from "@/lib/utils/grade";
@@ -23,16 +24,20 @@ function greeting() {
 
 export default function DashboardPage() {
   const { data } = useAppStore();
+  const hasCourses = data.courses.length > 0;
 
   const avgGrade =
-    data.courses.reduce((sum, c) => sum + (c.current_grade_percent ?? 0), 0) /
-    data.courses.length;
+    hasCourses
+      ? data.courses.reduce((sum, c) => sum + (c.current_grade_percent ?? 0), 0) /
+        data.courses.length
+      : 0;
   const avgGpa = gpa(avgGrade);
 
   const upcoming = data.assignments.filter(
     (a) =>
       a.status !== "done" &&
-      differenceInCalendarDays(new Date(a.dueDate), new Date()) <= 7
+      !!a.due_at &&
+      differenceInCalendarDays(new Date(a.due_at), new Date()) <= 7
   ).length;
 
   const studyHours = data.studyBlocks
@@ -44,15 +49,21 @@ export default function DashboardPage() {
     }, 0);
 
   const attendanceRisk = data.courses.filter(
-    (c) => c.missedClasses >= c.attendancePolicy.maxAbsences - 1
+    (c) =>
+      c.attendance_allowed_misses > 0 &&
+      c.attendance_missed_count >= c.attendance_allowed_misses - 1
   ).length;
 
   return (
     <div>
       <PageHeader
-        eyebrow="Spring 2026 · Week 8"
-        title={`${greeting()}, Marco`}
-        description="Here's the state of your semester. You have a busy week coming up — let's make it count."
+        eyebrow={hasCourses ? `${data.courses.length} active courses` : "Get started"}
+        title={hasCourses ? `${greeting()}, here is your semester snapshot` : "Your semester overview"}
+        description={
+          hasCourses
+            ? "Track deadlines, study load, grades, and weekly course signals in one place."
+            : "Upload a syllabus or add course data to unlock your dashboard, planner, and grade tracking."
+        }
         actions={<QuickActionsBar />}
       />
 
@@ -61,7 +72,7 @@ export default function DashboardPage() {
           icon={GraduationCap}
           label="Current GPA"
           value={avgGpa.toFixed(2)}
-          hint={`Avg ${avgGrade.toFixed(1)}%`}
+          hint={hasCourses ? `Avg ${avgGrade.toFixed(1)}%` : "No graded courses yet"}
           tone="accent"
         />
         <StatTile
@@ -75,7 +86,7 @@ export default function DashboardPage() {
           icon={TrendingUp}
           label="Study hours planned"
           value={`${studyHours.toFixed(0)}h`}
-          hint="Across 7 days"
+          hint={data.studyBlocks.length > 0 ? "Across 7 days" : "Generate a study plan"}
           tone="success"
         />
         <StatTile
@@ -86,6 +97,12 @@ export default function DashboardPage() {
           tone={attendanceRisk > 0 ? "danger" : "success"}
         />
       </div>
+
+      {!hasCourses && (
+        <div className="card-surface p-5 mb-6 text-sm text-muted">
+          No courses are loaded yet. Start with the upload flow or connect your tokens so the dashboard has real course data to summarize.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-5">
         <div className="xl:col-span-2 space-y-4 lg:space-y-5">
@@ -98,6 +115,7 @@ export default function DashboardPage() {
         </div>
         <div className="space-y-4 lg:space-y-5">
           <DeadlineList />
+          <WeeklyPulseSnapshotCard />
           <AttendanceWidget />
         </div>
       </div>

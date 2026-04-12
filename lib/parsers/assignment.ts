@@ -1,4 +1,5 @@
 import { extractJSON } from "@/lib/claude";
+import type { AIProvider } from "@/lib/ai/models";
 
 export interface AssignmentQuestion {
   number: string;        // "Q1", "Problem 2a", etc.
@@ -58,10 +59,14 @@ difficulty: judge by concepts required and question complexity.
 implicitRequirements: look for grading rubric hints, style guides mentioned elsewhere, test harness references.
 Return ONLY JSON.`;
 
-export async function parseAssignment(text: string): Promise<AssignmentParseResult> {
+export async function parseAssignment(
+  text: string,
+  options?: { provider?: AIProvider; apiKey?: string; model?: string }
+): Promise<AssignmentParseResult> {
   const truncated = text.slice(0, 10000);
   return extractJSON<AssignmentParseResult>(
     SYSTEM_PROMPT,
-    `Analyze this assignment:\n\n${truncated}`
+    `Analyze this assignment:\n\n${truncated}`,
+    options
   );
 }

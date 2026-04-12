@@ -1,14 +1,11 @@
 import { addDays, endOfDay, formatISO, startOfDay, subDays } from "date-fns";
-import { generateObject } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
 import { getServiceClient } from "@/lib/supabase/server";
+import { generateObjectWithAI, type AIConfig } from "@/lib/ai/client";
 import {
   WeeklyCoursePulseGenerationSchema,
   type WeeklyCoursePulseRecord,
   type WeeklyCoursePulseSourceSummary,
 } from "@/lib/schemas/weekly-course-pulse";
-
-const MODEL_NAME = "claude-sonnet-4-5";
 
 interface DbCourseRow {
   id: string;
@@ -108,6 +105,7 @@ export interface GenerateWeeklyCoursePulseInput {
   canvasBaseUrl?: string;
   canvasAccessToken?: string;
   referenceDate?: string | Date;
+  aiConfig?: AIConfig;
 }
 
 export interface GenerateWeeklyCoursePulseResult extends WeeklyCoursePulseRecord {
@@ -308,8 +306,13 @@ export async function generateWeeklyCoursePulse(
   const gathered = await gatherContext(input);
   const generatedAt = toIsoTimestamp(new Date());
 
-  const result = await generateObject({
-    model: anthropic(MODEL_NAME),
+  const aiConfig = input.aiConfig;
+  if (!aiConfig) {
+    throw new Error("Missing AI config for weekly course pulse generation");
+  }
+
+  const result = await generateObjectWithAI({
+    config: aiConfig,
     schema: WeeklyCoursePulseGenerationSchema,
     system:
       "You generate a weekly course pulse for a student support system. " +
@@ -340,7 +343,7 @@ export async function generateWeeklyCoursePulse(
     futureWindowStart: gathered.futureWindowStart,
     futureWindowEnd: gathered.futureWindowEnd,
     generatedAt,
-    model: MODEL_NAME,
+    model: aiConfig.model,
     sourceSummary: gathered.sourceSummary,
     pulse: result.object,
     rawContext: gathered.context,

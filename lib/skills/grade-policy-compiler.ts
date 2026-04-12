@@ -2,20 +2,15 @@
  * Grade Policy Compiler
  *
  * Reads the raw grading_policy text from the syllabus table, sends it to
- * Gemini, and gets back JavaScript code snippets for each template slot.
- * The filled template is then stored in syllabus.grading_code so this only
- * runs once per syllabus upload — not on every grade calculation.
- *
- * Flow:
- *   grading_policy (text) → Gemini → slot snippets → fillTemplate → grading_code (text)
+ * the configured LLM provider, and gets back JavaScript code snippets for
+ * each template slot. The filled template is then stored in
+ * syllabus.grading_code so this only runs once per syllabus upload.
  */
 
-import { google } from "@ai-sdk/google";
-import { generateText } from "ai";
-import { fillTemplate, GRADE_TEMPLATE, SLOT_DEFAULTS, type SlotName } from "./grade-template";
+import type { AIConfig } from "@/lib/ai/client";
+import { generateTextWithAI } from "@/lib/ai/client";
+import { fillTemplate, type SlotName } from "./grade-template";
 import { getServiceClient } from "@/lib/supabase/server";
-
-// ── Prompt ────────────────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `You are an expert at converting academic grading policies into JavaScript code snippets.
 
@@ -29,22 +24,13 @@ SLOT DESCRIPTIONS AND AVAILABLE VARIABLES:
    - pointsPossible: number[] — mutable array of max points per score (modify alongside scores)
    - categoryName: string     — name of the grading category (e.g. "Quizzes")
    - categoryWeight: number   — percent weight of this category (0–100)
-   Use for: drop lowest N scores, keep best N of M, dynamic per-score weighting, etc.
+   Use for: drop lowest N scores, keep best N of M, etc.
    Example for "drop lowest quiz score":
      if (/quiz/i.test(categoryName) && scores.length > 1) {
        var minIdx = scores.indexOf(Math.min.apply(null, scores));
        scores.splice(minIdx, 1);
        pointsPossible.splice(minIdx, 1);
      }
-   Example for "two exams: higher score counts 20%, lower counts 10% of final grade":
-     (Use PREPROCESS — NOT ADJUST — because we must re-weight individual scores before averaging.)
-     if (/exam/i.test(categoryName) && scores.length === 2) {
-       var pairs = [{s: scores[0], pp: pointsPossible[0]}, {s: scores[1], pp: pointsPossible[1]}];
-       pairs.sort(function(a, b) { return b.s - a.s; });
-       scores[0] = pairs[0].s * 2; pointsPossible[0] = pairs[0].pp * 2;
-       scores[1] = pairs[1].s * 1; pointsPossible[1] = pairs[1].pp * 1;
-     }
-     (This scales pointsPossible 2:1 so the weighted average = (higher×2 + lower×1)/(pp×2 + pp×1).)
 
 2. ADJUST (runs per-category, after computing categoryAverage)
    Available variables:
@@ -52,8 +38,6 @@ SLOT DESCRIPTIONS AND AVAILABLE VARIABLES:
    - categoryName: string
    - categoryWeight: number
    Use for: curve a single category, cap at a value, add flat bonus points.
-   Example for "add 3 point curve to midterm":
-     if (/midterm/i.test(categoryName)) { categoryAverage = Math.min(categoryAverage + 3, 100); }
 
 3. FINAL (runs once after all categories)
    Available variables:
@@ -61,10 +45,6 @@ SLOT DESCRIPTIONS AND AVAILABLE VARIABLES:
    - currentGrade: number | null
    - worstCaseGrade: number
    Use for: attendance penalty, overall extra credit, final grade cap/floor.
-   Example for "5% penalty if more than 3 absences" (absences injected as context):
-     if (typeof absences !== 'undefined' && absences > 3) {
-       adjustedProjected = Math.max(0, adjustedProjected - (absences - 3) * 5);
-     }
 
 RULES:
 - Output ONLY valid JSON with keys "PREPROCESS", "ADJUST", "FINAL"
@@ -85,30 +65,17 @@ OUTPUT FORMAT (return only this JSON, no prose, no markdown fences):
   "FINAL": "<code or null>"
 }`;
 
-// ── Main export ───────────────────────────────────────────────────────────────
-
-/**
- * Compile a grading_policy text into executable JavaScript using Gemini,
- * then persist the result to syllabus.grading_code.
- *
- * @param courseId       The text course_id (PK of the syllabus table)
- * @param gradingPolicy  Raw grading_policy text from syllabus table
- * @returns              The filled template code string (also saved to DB)
- */
 export async function compileAndStoreGradePolicy(
   courseId: string,
-  gradingPolicy: string
+  gradingPolicy: string,
+  aiConfig: AIConfig
 ): Promise<string> {
-  const slots = await callGemini(gradingPolicy);
+  const slots = await callModel(gradingPolicy, aiConfig);
   const filledCode = fillTemplate(slots);
   await persistGradingCode(courseId, filledCode);
   return filledCode;
 }
 
-/**
- * Fetch pre-compiled grading code from the DB.
- * Returns null if no code has been compiled yet for this course.
- */
 export async function getCompiledGradeCode(courseId: string): Promise<string | null> {
   const supabase = getServiceClient();
   const { data, error } = await supabase
@@ -121,45 +88,31 @@ export async function getCompiledGradeCode(courseId: string): Promise<string | n
   return data.grading_code as string;
 }
 
-// ── Gemini call ───────────────────────────────────────────────────────────────
-
-async function callGemini(
-  gradingPolicy: string
+async function callModel(
+  gradingPolicy: string,
+  aiConfig: AIConfig
 ): Promise<Partial<Record<SlotName, string>>> {
-  if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
-    throw new Error("Missing GOOGLE_GENERATIVE_AI_API_KEY env var");
-  }
-
-  const { text } = await generateText({
-    model: google("gemini-2.5-flash"),
+  const { text } = await generateTextWithAI({
+    config: aiConfig,
     system: SYSTEM_PROMPT,
     prompt: `Grading policy from syllabus:\n\n${gradingPolicy}`,
-    maxOutputTokens: 2048,
+    maxOutputTokens: 1024,
     temperature: 0.1,   // low temperature for deterministic code generation
   });
 
-  return parseGeminiResponse(text);
+  return parseModelResponse(text);
 }
 
-function parseGeminiResponse(raw: string): Partial<Record<SlotName, string>> {
-  // Strip markdown fences if Gemini wraps in ```json ... ```
+function parseModelResponse(raw: string): Partial<Record<SlotName, string>> {
   const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
 
   let parsed: Record<string, string | null>;
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    // Gemini sometimes emits literal newlines inside JSON string values instead of \n.
-    // Repair by finding each JSON string and escaping any bare newlines within it.
-    try {
-      const repaired = cleaned.replace(/"((?:[^"\\]|\\[\s\S])*)"/gs, (_, content: string) =>
-        '"' + content.replace(/\r?\n/g, "\\n").replace(/\t/g, "\\t") + '"'
-      );
-      parsed = JSON.parse(repaired);
-    } catch {
-      console.error("[grade-policy-compiler] Gemini returned invalid JSON:", raw);
-      return {};
-    }
+    console.error("[grade-policy-compiler] Gemini returned invalid JSON:", raw);
+    // Fall back to all defaults — calculation still works, just without policies
+    return {};
   }
 
   const slots: Partial<Record<SlotName, string>> = {};
@@ -170,13 +123,10 @@ function parseGeminiResponse(raw: string): Partial<Record<SlotName, string>> {
     if (typeof value === "string" && value.trim()) {
       slots[slot] = value.trim();
     }
-    // null or missing → slot stays undefined → fillTemplate uses no-op default
   }
 
   return slots;
 }
-
-// ── DB write ──────────────────────────────────────────────────────────────────
 
 async function persistGradingCode(courseId: string, code: string): Promise<void> {
   const supabase = getServiceClient();

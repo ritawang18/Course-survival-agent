@@ -3,6 +3,8 @@ import { z } from "zod";
 import { getUserFromRequest, getServiceClient } from "@/lib/supabase/server";
 import { getWeeklyCoursePulse, upsertWeeklyCoursePulse } from "@/lib/db/weekly_course_pulse";
 import { generateWeeklyCoursePulse } from "@/lib/skills/generateWeeklyCoursePulse";
+import { getUserIntegrationToken } from "@/lib/db/user_integration_tokens";
+import { requireAIConfig } from "@/lib/ai/client";
 
 export const runtime = "nodejs";
 
@@ -45,6 +47,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Course not found" }, { status: 404 });
     }
 
+    const storedCanvasToken = await getUserIntegrationToken(user.id, "canvas");
+    const aiConfig = await requireAIConfig(user.id);
+
     const anchorDate =
       body.referenceDate && !Number.isNaN(new Date(body.referenceDate).getTime())
         ? body.referenceDate.slice(0, 10)
@@ -61,8 +66,9 @@ export async function POST(req: NextRequest) {
       courseUuid: body.courseUuid,
       canvasCourseId: body.canvasCourseId,
       canvasBaseUrl: body.canvasBaseUrl,
-      canvasAccessToken: body.canvasAccessToken,
+      canvasAccessToken: body.canvasAccessToken ?? storedCanvasToken ?? undefined,
       referenceDate: body.referenceDate,
+      aiConfig,
     });
 
     const saved = await upsertWeeklyCoursePulse(generated);

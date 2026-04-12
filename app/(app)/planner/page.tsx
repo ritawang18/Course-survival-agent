@@ -35,17 +35,18 @@ const priorityStyle = {
 export default function PlannerPage() {
   const { data, replanStudy, replanning } = useAppStore();
   const [anchor] = useState(new Date());
-  const days = weekDays(anchor);
+  const days = useMemo(() => weekDays(anchor), [anchor]);
+  const studyBlocks = data.studyBlocks;
   const [selectedDay, setSelectedDay] = useState<string>(
     isoDay(new Date()).slice(0, 10)
   );
 
   const byDay = useMemo(() => {
-    const map: Record<string, typeof data.studyBlocks> = {};
+    const map: Record<string, typeof studyBlocks> = {};
     for (const d of days) {
       map[isoDay(d).slice(0, 10)] = [];
     }
-    for (const b of data.studyBlocks) {
+    for (const b of studyBlocks) {
       const key = b.date.slice(0, 10);
       if (key in map) map[key].push(b);
     }
@@ -53,7 +54,7 @@ export default function PlannerPage() {
       arr.sort((a, b) => a.start.localeCompare(b.start))
     );
     return map;
-  }, [days, data.studyBlocks]);
+  }, [days, studyBlocks]);
 
   const nearestExam = [...data.exams]
     .filter((e) => new Date(e.date) >= new Date())
@@ -102,7 +103,7 @@ export default function PlannerPage() {
               Exam constraint: {nearestExam.title}
             </div>
             <div className="text-xs text-muted mt-0.5">
-              {data.courses.find((c) => c.id === nearestExam.courseId)?.code} · Blocks
+              {data.courses.find((c) => c.id === nearestExam.course_id)?.code} · Blocks
               8 hours of review this week for top priority topics.
             </div>
           </div>
@@ -167,7 +168,7 @@ export default function PlannerPage() {
                       .slice(0, 4)
                       .map((b) => {
                         const course = data.courses.find(
-                          (c) => c.id === b.courseId
+                          (c) => c.id === b.course_id
                         );
                         return (
                           <div
@@ -227,7 +228,7 @@ export default function PlannerPage() {
             </CardHeader>
             <CardBody className="space-y-2">
               {dayBlocks.map((b) => {
-                const course = data.courses.find((c) => c.id === b.courseId);
+                const course = data.courses.find((c) => c.id === b.course_id);
                 const colors = course ? courseColorMap[course.color] : null;
                 return (
                   <div
