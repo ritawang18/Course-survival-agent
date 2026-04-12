@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Course Survival Agent",
   "version": "0.1.0",
-  "description": "Canvas Companion Sidebar for contextual student survival help.",
-  "permissions": ["storage", "activeTab", "tabs", "sidePanel"],
+  "description": "Canvas Companion Sidebar backed by the Web UI. Options are for local debug settings only.",
+  "permissions": ["storage", "activeTab", "tabs", "sidePanel", "scripting"],
   "host_permissions": [
     "https://*/*",
     "http://*/*"
@@ -21,7 +21,15 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://*/*", "http://*/*"],
+      "matches": [
+        "https://*.instructure.com/",
+        "https://*.instructure.com/dashboard*",
+        "https://*.instructure.com/courses/*"
+      ],
+      "exclude_matches": [
+        "https://*.login.instructure.com/*",
+        "https://sso.canvaslms.com/*"
+      ],
       "js": ["content.js"],
       "run_at": "document_idle"
     }

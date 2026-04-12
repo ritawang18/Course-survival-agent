@@ -5,11 +5,17 @@ import {
   type ExtensionCanvasContext
 } from "@/lib/extension/context";
 import { ExtensionContextSummaryRequestSchema } from "@/lib/extension/request-schemas";
+import { getUserFromRequest } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
+    const user = await getUserFromRequest(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     let json: unknown;
     try {
       json = await req.json();
@@ -20,7 +26,7 @@ export async function POST(req: NextRequest) {
     const { context } = ExtensionContextSummaryRequestSchema.parse(json) as {
       context: ExtensionCanvasContext;
     };
-    const summary = await buildExtensionContextSummary(context);
+    const summary = await buildExtensionContextSummary(context, user.id);
     return NextResponse.json(summary);
   } catch (error) {
     if (error instanceof z.ZodError) {

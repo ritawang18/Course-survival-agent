@@ -96,6 +96,17 @@ export interface ExtensionContextSummaryResponse {
   courseSnapshot?: ExtensionCourseSnapshot;
   assignmentSnapshot?: ExtensionAssignmentSnapshot;
   gradeSnapshot?: ExtensionGradeSnapshot;
+  courseMatch?: {
+    courseUuid: string;
+    courseCode?: string;
+    courseName?: string | null;
+    matchSource: "canvas_mapping" | "text_match";
+  };
+  weeklyPulse?: {
+    generatedAt?: string | null;
+    pastWeekLearned: string;
+    nextWeekPreview: string;
+  };
   context: ExtensionCanvasContext;
 }
 
@@ -147,6 +158,26 @@ interface DbCourseGradeRow {
   current_letter_grade?: string | null;
   projected_percent?: number | null;
   projected_letter_grade?: string | null;
+}
+
+interface DbCourseCanvasSettingsRow {
+  course_uuid: string;
+  canvas_course_id?: string | null;
+  canvas_base_url?: string | null;
+}
+
+interface DbWeeklyCoursePulseRow {
+  course_uuid: string;
+  generated_at: string | null;
+  past_week_learned: string;
+  next_week_preview: string;
+}
+
+interface DbProfessorInsightRow {
+  course_id: string | null;
+  professor_name: string;
+  university_name: string;
+  generated_at: string | null;
 }
 
 function normalize(value?: string | null) {
@@ -335,29 +366,56 @@ function pageSummaryForContext(context: ExtensionCanvasContext) {
   }
 }
 
-async function findCourseMatch(context: ExtensionCanvasContext): Promise<DbCourseRow | null> {
+async function fetchUserCourses(userId: string): Promise<DbCourseRow[]> {
   const supabase = getServiceClient();
+  const { data } = await supabase
+    .from("courses")
+    .select("id, course_id, course_name, instructor_name, attendance_allowed_misses, updated_at")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false });
+
+  return (data ?? []) as DbCourseRow[];
+}
+
+async function findCourseMatch(
+  context: ExtensionCanvasContext,
+  userId: string,
+  userCourses?: DbCourseRow[]
+): Promise<{ course: DbCourseRow | null; matchSource?: "canvas_mapping" | "text_match" }> {
+  const supabase = getServiceClient();
+  const availableCourses = userCourses ?? (await fetchUserCourses(userId));
+  if (availableCourses.length === 0) return { course: null };
+
+  if (context.courseId) {
+    const { data: mappedSettings } = await supabase
+      .from("course_canvas_settings")
+      .select("course_uuid, canvas_course_id, canvas_base_url")
+      .in(
+        "course_uuid",
+        availableCourses.map((course) => course.id)
+      )
+      .eq("canvas_course_id", context.courseId);
+
+    const settingsRows = (mappedSettings ?? []) as DbCourseCanvasSettingsRow[];
+    const exactOriginMatch =
+      settingsRows.find((row) => row.canvas_base_url?.trim() === context.origin.trim()) ??
+      settingsRows.find((row) => !row.canvas_base_url) ??
+      settingsRows[0];
+
+    if (exactOriginMatch) {
+      const matched = availableCourses.find((course) => course.id === exactOriginMatch.course_uuid);
+      if (matched) return { course: matched, matchSource: "canvas_mapping" };
+    }
+  }
 
   const exactCourseKeys = [context.courseCode, context.courseName]
     .map((item) => item?.trim())
     .filter(Boolean) as string[];
 
   for (const courseKey of exactCourseKeys) {
-    const { data: byCourseId } = await supabase
-      .from("courses")
-      .select("id, course_id, course_name, instructor_name, attendance_allowed_misses, updated_at")
-      .eq("course_id", courseKey)
-      .order("updated_at", { ascending: false })
-      .limit(5);
-
-    const { data: byCourseName } = await supabase
-      .from("courses")
-      .select("id, course_id, course_name, instructor_name, attendance_allowed_misses, updated_at")
-      .eq("course_name", courseKey)
-      .order("updated_at", { ascending: false })
-      .limit(5);
-
-    const candidates = [...(byCourseId ?? []), ...(byCourseName ?? [])] as DbCourseRow[];
+    const candidates = availableCourses.filter(
+      (course) => course.course_id === courseKey || course.course_name === courseKey
+    );
     if (candidates.length > 0) {
       const best = candidates.sort((a, b) => {
         const aScore = Math.max(
@@ -378,21 +436,18 @@ async function findCourseMatch(context: ExtensionCanvasContext): Promise<DbCours
           textScore(context.courseName, best.course_name ?? best.course_id)
         ) >= 6
       ) {
-        return best;
+        return { course: best, matchSource: "text_match" };
       }
     }
   }
 
   if (context.courseName) {
-    const { data } = await supabase
-      .from("courses")
-      .select("id, course_id, course_name, instructor_name, attendance_allowed_misses, updated_at")
-      .ilike("course_name", `%${context.courseName}%`)
-      .order("updated_at", { ascending: false })
-      .limit(5);
+    const filtered = availableCourses.filter((course) =>
+      (course.course_name ?? "").toLowerCase().includes(context.courseName?.toLowerCase() ?? "")
+    );
 
-    if (data && data.length > 0) {
-      const ranked = (data as DbCourseRow[])
+    if (filtered.length > 0) {
+      const ranked = filtered
         .map((row) => ({
           row,
           score: Math.max(
@@ -403,12 +458,12 @@ async function findCourseMatch(context: ExtensionCanvasContext): Promise<DbCours
         .sort((a, b) => b.score - a.score);
 
       if (ranked[0] && ranked[0].score >= 6) {
-        return ranked[0].row;
+        return { course: ranked[0].row, matchSource: "text_match" };
       }
     }
   }
 
-  return null;
+  return { course: null };
 }
 
 async function fetchSyllabus(courseKey: string): Promise<DbSyllabusRow | null> {
@@ -476,6 +531,55 @@ async function fetchDashboardAssignments(): Promise<Array<DbAssignmentRow & { co
       course: Array.isArray(item.courses) ? item.courses[0] ?? null : item.courses ?? null
     })
   );
+}
+
+async function fetchDashboardAssignmentsForUser(
+  userCourses: DbCourseRow[]
+): Promise<Array<DbAssignmentRow & { course?: DbCourseRow | null }>> {
+  if (userCourses.length === 0) return [];
+
+  const supabase = getServiceClient();
+  const now = new Date().toISOString();
+  const courseIds = userCourses.map((course) => course.id);
+  const courseById = new Map(userCourses.map((course) => [course.id, course]));
+  const { data } = await supabase
+    .from("assignments")
+    .select(
+      "id, course_id, canvas_assignment_id, title, assignment_type, description, due_at, available_from, available_until, points_possible, status, estimated_hours, dependencies"
+    )
+    .in("course_id", courseIds)
+    .gte("due_at", now)
+    .order("due_at", { ascending: true })
+    .limit(6);
+
+  return ((data ?? []) as DbAssignmentRow[]).map((item) => ({
+    ...item,
+    course: courseById.get(item.course_id) ?? null
+  }));
+}
+
+async function fetchLatestWeeklyPulse(courseUuid: string): Promise<DbWeeklyCoursePulseRow | null> {
+  const supabase = getServiceClient();
+  const { data } = await supabase
+    .from("weekly_course_pulse")
+    .select("course_uuid, generated_at, past_week_learned, next_week_preview")
+    .eq("course_uuid", courseUuid)
+    .order("generated_at", { ascending: false })
+    .limit(1);
+
+  return data && data.length > 0 ? (data[0] as DbWeeklyCoursePulseRow) : null;
+}
+
+async function fetchLatestProfessorInsight(courseId: string): Promise<DbProfessorInsightRow | null> {
+  const supabase = getServiceClient();
+  const { data } = await supabase
+    .from("professor_insights")
+    .select("course_id, professor_name, university_name, generated_at")
+    .eq("course_id", courseId)
+    .order("generated_at", { ascending: false })
+    .limit(1);
+
+  return data && data.length > 0 ? (data[0] as DbProfessorInsightRow) : null;
 }
 
 function findAssignmentMatch(assignments: DbAssignmentRow[], context: ExtensionCanvasContext) {
@@ -574,19 +678,31 @@ function buildAlerts(
 }
 
 export async function buildExtensionContextSummary(
-  incoming: ExtensionCanvasContext
+  incoming: ExtensionCanvasContext,
+  userId: string
 ): Promise<ExtensionContextSummaryResponse> {
   const context: ExtensionCanvasContext = { ...incoming };
   let courseSnapshot: ExtensionCourseSnapshot | undefined;
   let assignmentSnapshot: ExtensionAssignmentSnapshot | undefined;
   let gradeSnapshot: ExtensionGradeSnapshot | undefined;
   let assignmentMatch: DbAssignmentRow | null = null;
+  let weeklyPulse: DbWeeklyCoursePulseRow | null = null;
+  let professorInsight: DbProfessorInsightRow | null = null;
+  let courseMatch:
+    | {
+        courseUuid: string;
+        courseCode?: string;
+        courseName?: string | null;
+        matchSource: "canvas_mapping" | "text_match";
+      }
+    | undefined;
   let snapshotSource: SummaryDataSource = "dom_fallback";
   let riskSource: SummaryDataSource = "dom_fallback";
   let checklistSource: SummaryDataSource = "dom_fallback";
+  const userCourses = await fetchUserCourses(userId);
 
   if (context.pageType === "dashboard") {
-    const upcomingAssignments = await fetchDashboardAssignments();
+    const upcomingAssignments = await fetchDashboardAssignmentsForUser(userCourses);
     if (upcomingAssignments.length > 0 && context.dashboardDeadlines.length === 0) {
       const dashboardDeadlines = upcomingAssignments
         .map((item) => formatDeadlineLine(item, item.course))
@@ -606,11 +722,23 @@ export async function buildExtensionContextSummary(
     }
   }
 
-  const matchedCourse = await findCourseMatch(context);
+  const matchResult = await findCourseMatch(context, userId, userCourses);
+  const matchedCourse = matchResult.course;
   const syllabus = matchedCourse ? await fetchSyllabus(matchedCourse.course_id) : null;
   const studyPlan = matchedCourse ? await fetchStudyPlan(matchedCourse.id) : null;
   const courseGrade = matchedCourse ? await fetchCourseGrade(matchedCourse.id) : null;
   const assignments = matchedCourse ? await fetchAssignmentsForCourse(matchedCourse.id) : [];
+  weeklyPulse = matchedCourse ? await fetchLatestWeeklyPulse(matchedCourse.id) : null;
+  professorInsight = matchedCourse ? await fetchLatestProfessorInsight(matchedCourse.course_id) : null;
+
+  if (matchedCourse && matchResult.matchSource) {
+    courseMatch = {
+      courseUuid: matchedCourse.id,
+      courseCode: matchedCourse.course_id,
+      courseName: matchedCourse.course_name,
+      matchSource: matchResult.matchSource
+    };
+  }
 
   if (matchedCourse && assignments.length > 0 && !context.nearestDueText) {
     const firstUpcoming = assignments.find((item) => item.due_at && new Date(item.due_at) >= new Date());
@@ -623,6 +751,7 @@ export async function buildExtensionContextSummary(
     const nextAssignment = assignments.find((item) => item.due_at && new Date(item.due_at) >= new Date());
     const currentPressure =
       (nextAssignment ? formatDeadlineLine(nextAssignment) : null) ??
+      weeklyPulse?.next_week_preview ??
       studyPlan?.title ??
       context.nearestDueText;
 
@@ -641,6 +770,11 @@ export async function buildExtensionContextSummary(
     context.examDatesText = formatExamSummary(syllabus?.exam_dates) ?? context.examDatesText;
     context.nearestDueText = currentPressure ?? context.nearestDueText;
 
+    if (weeklyPulse && context.pageType === "course_home") {
+      context.modulePastSummary = context.modulePastSummary ?? weeklyPulse.past_week_learned;
+      context.moduleNextSummary = context.moduleNextSummary ?? weeklyPulse.next_week_preview;
+    }
+
     if (assignments.length > 1 && context.pageType === "module") {
       const sorted = assignments.filter((item) => item.due_at).sort((a, b) => {
         return new Date(a.due_at ?? "").valueOf() - new Date(b.due_at ?? "").valueOf();
@@ -652,6 +786,11 @@ export async function buildExtensionContextSummary(
       if (firstUpcomingIndex >= 0 && firstUpcomingIndex < sorted.length) {
         context.moduleNextSummary = `Next important item: ${sorted[firstUpcomingIndex].title}`;
       }
+    }
+
+    if (weeklyPulse && context.pageType === "module") {
+      context.modulePastSummary = context.modulePastSummary ?? weeklyPulse.past_week_learned;
+      context.moduleNextSummary = context.moduleNextSummary ?? weeklyPulse.next_week_preview;
     }
   }
 
@@ -687,6 +826,24 @@ export async function buildExtensionContextSummary(
   }
 
   const alerts = buildAlerts(context, assignmentMatch);
+  if (weeklyPulse && context.pageType === "course_home") {
+    alerts.unshift({
+      id: "weekly-pulse",
+      severity: "low",
+      title: "Weekly pulse available",
+      detail: `Next focus: ${weeklyPulse.next_week_preview}`
+    });
+    riskSource = "database";
+  }
+  if (professorInsight) {
+    alerts.push({
+      id: "insight-available",
+      severity: "low",
+      title: "Instructor insight cached in Web UI",
+      detail: `Insight is available for ${professorInsight.professor_name}. Open the Web UI for the full summary.`
+    });
+    riskSource = "database";
+  }
   if (assignmentMatch?.description?.trim() || assignmentMatch?.dependencies?.length) {
     riskSource = "database";
   }
@@ -695,12 +852,17 @@ export async function buildExtensionContextSummary(
     checklistSource = "database";
   }
 
+  const pageSummary =
+    weeklyPulse && context.pageType === "course_home"
+      ? `Last week: ${weeklyPulse.past_week_learned}\n\nNext week: ${weeklyPulse.next_week_preview}`
+      : pageSummaryForContext(context);
+
   return {
     riskLevel:
       context.pageType === "assignment" || alerts.some((item) => item.severity !== "low")
         ? "medium"
         : "low",
-    pageSummary: pageSummaryForContext(context),
+    pageSummary,
     alerts,
     checklist: checklistForContext(context),
     promptSuggestions: promptsForPage(context.pageType),
@@ -716,6 +878,15 @@ export async function buildExtensionContextSummary(
     courseSnapshot,
     assignmentSnapshot,
     gradeSnapshot,
+    courseMatch,
+    weeklyPulse:
+      weeklyPulse
+        ? {
+            generatedAt: weeklyPulse.generated_at,
+            pastWeekLearned: weeklyPulse.past_week_learned,
+            nextWeekPreview: weeklyPulse.next_week_preview
+          }
+        : undefined,
     context
   };
 }
@@ -725,8 +896,8 @@ function extractAssignmentRequirements(assignment: DbAssignmentRow | null) {
   return assignment.description.trim();
 }
 
-export async function buildAskAgentContext(incoming: ExtensionCanvasContext) {
-  const summary = await buildExtensionContextSummary(incoming);
+export async function buildAskAgentContext(incoming: ExtensionCanvasContext, userId: string) {
+  const summary = await buildExtensionContextSummary(incoming, userId);
   const matchedCourse = summary.courseSnapshot?.courseId
     ? {
         id: summary.courseSnapshot.courseId,

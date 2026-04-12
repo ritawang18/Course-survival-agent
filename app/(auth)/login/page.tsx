@@ -1,21 +1,52 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AlertCircle, Mail, ArrowRight } from "lucide-react";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { PasswordField } from "@/components/auth/PasswordField";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { dispatchWebUiAuthToken } from "@/lib/extension/web-auth-bridge";
 import { getSupabaseClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const nextUrl = searchParams.get("next");
+
+  const redirectAfterLogin = (target?: string | null) => {
+    if (!target) {
+      router.push("/dashboard");
+      router.refresh();
+      return;
+    }
+
+    if (/^https?:\/\//i.test(target)) {
+      window.location.assign(target);
+      return;
+    }
+
+    router.push(target);
+    router.refresh();
+  };
+
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        dispatchWebUiAuthToken(data.session.access_token);
+        window.setTimeout(() => {
+          redirectAfterLogin(nextUrl);
+        }, 300);
+      }
+    });
+  }, [nextUrl]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,13 +54,15 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const supabase = getSupabaseClient();
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
       if (signInError) throw signInError;
-      router.push("/dashboard");
-      router.refresh();
+      dispatchWebUiAuthToken(signInData.session?.access_token ?? null);
+      window.setTimeout(() => {
+        redirectAfterLogin(nextUrl);
+      }, 300);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not sign in");
     } finally {
@@ -46,7 +79,7 @@ export default function LoginPage() {
         options: {
           redirectTo:
             typeof window !== "undefined"
-              ? `${window.location.origin}/dashboard`
+              ? `${window.location.origin}/login${nextUrl ? `?next=${encodeURIComponent(nextUrl)}` : ""}`
               : undefined,
         },
       });

@@ -1,15 +1,103 @@
-import { askAgent, buildFallbackSummary, fetchContextSummary } from "../lib/api/backend-client";
-import { fetchCanvasEnrichment } from "../lib/api/canvas-client";
+import {
+  askAgent,
+  fetchContextSummary,
+  fetchExtensionSessionState,
+  type ExtensionSessionState
+} from "../lib/api/backend-client";
 import type { ContextSummaryResponse } from "../lib/types/api";
 import type { CanvasPageContext } from "../lib/types/canvas";
 import type { ExtensionMessage, MessageResponseMap } from "../lib/types/messages";
 import { getSettings, saveSettings } from "../lib/storage/settings-store";
-import { getCanvasToken } from "../lib/storage/token-store";
-import { DEFAULT_SETTINGS } from "../shared/constants";
+import { clearWebAuthToken, getWebAuthToken, saveWebAuthToken } from "../lib/storage/web-auth-store";
+import { DEFAULT_SETTINGS, STORAGE_KEYS } from "../shared/constants";
 import { resolveWebAppBaseUrl, resolveWebAppTokenUrl } from "../shared/env";
 
 const contextByTab = new Map<number, CanvasPageContext>();
 const summaryByTab = new Map<number, ContextSummaryResponse>();
+const WEB_UI_CONTENT_SCRIPT_ID = "course-survival-web-ui-auth";
+let lastSessionState: ExtensionSessionState | null = null;
+let webUiContentScriptSync: Promise<void> = Promise.resolve();
+
+function buildDynamicWebUiMatches(rawWebAppBaseUrl: string) {
+  try {
+    const parsed = new URL(rawWebAppBaseUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return [];
+    }
+    return [`${parsed.protocol}//${parsed.hostname}/*`];
+  } catch {
+    return [];
+  }
+}
+
+async function ensureSettingsInitialized() {
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.settings);
+  if (stored[STORAGE_KEYS.settings]) {
+    return getSettings();
+  }
+
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.settings]: DEFAULT_SETTINGS
+  });
+  return DEFAULT_SETTINGS;
+}
+
+async function syncDynamicWebUiContentScriptNow() {
+  if (!chrome.scripting?.registerContentScripts) {
+    return;
+  }
+
+  const settings = await getSettings();
+  const matches = buildDynamicWebUiMatches(settings.webAppBaseUrl);
+  const desired = {
+    id: WEB_UI_CONTENT_SCRIPT_ID,
+    js: ["content.js"],
+    matches,
+    runAt: "document_idle" as const,
+    persistAcrossSessions: true
+  };
+
+  const existing = chrome.scripting.getRegisteredContentScripts
+    ? await chrome.scripting.getRegisteredContentScripts({
+        ids: [WEB_UI_CONTENT_SCRIPT_ID]
+      })
+    : [];
+  const current = existing[0];
+
+  if (
+    current &&
+    JSON.stringify(current.matches ?? []) === JSON.stringify(desired.matches) &&
+    JSON.stringify(current.js ?? []) === JSON.stringify(desired.js) &&
+    current.runAt === desired.runAt &&
+    current.persistAcrossSessions === desired.persistAcrossSessions
+  ) {
+    return;
+  }
+
+  try {
+    await chrome.scripting.unregisterContentScripts({
+      ids: [WEB_UI_CONTENT_SCRIPT_ID]
+    });
+  } catch {
+    // Ignore missing registration.
+  }
+
+  if (matches.length === 0) {
+    return;
+  }
+
+  await chrome.scripting.registerContentScripts([desired]);
+}
+
+function syncDynamicWebUiContentScript() {
+  webUiContentScriptSync = webUiContentScriptSync
+    .catch(() => {
+      // Keep the queue alive after prior failures.
+    })
+    .then(() => syncDynamicWebUiContentScriptNow());
+
+  return webUiContentScriptSync;
+}
 
 async function notifyActiveTabChanged(reason: string, tabId?: number | null) {
   try {
@@ -128,6 +216,11 @@ async function buildSummaryForTab(tabId: number, refresh = false) {
   }
 
   const settings = await getSettings();
+  const authToken = await getWebAuthToken();
+  if (!authToken) {
+    return null;
+  }
+
   const tab = await getTabById(tabId);
   const minimalContext = tab?.url ? parseMinimalContextFromUrl(tab.url) : null;
   const context =
@@ -138,42 +231,26 @@ async function buildSummaryForTab(tabId: number, refresh = false) {
 
   if (!context) return null;
 
-  const backendSummary = await fetchContextSummary(settings, {
-    context
-  });
+  const sessionState = await fetchExtensionSessionState(settings, authToken);
+  lastSessionState = sessionState;
+  if (!sessionState?.authenticated) {
+    await clearWebAuthToken();
+    return null;
+  }
+
+  const backendSummary = await fetchContextSummary(
+    settings,
+    {
+      context
+    },
+    authToken
+  );
 
   if (backendSummary) {
     summaryByTab.set(tabId, backendSummary);
     return backendSummary;
   }
-
-  const token = await getCanvasToken();
-  const enrichment =
-    token && settings.enableCanvasApiEnrichment
-      ? await fetchCanvasEnrichment(context, token)
-      : null;
-
-  const enrichedContext: CanvasPageContext = {
-    ...context,
-    nearestDueText: enrichment?.nearestDueText ?? context.nearestDueText,
-    dashboardDeadlines:
-      enrichment?.dashboardDeadlines && enrichment.dashboardDeadlines.length > 0
-        ? enrichment.dashboardDeadlines
-        : context.dashboardDeadlines,
-    modulePastSummary: enrichment?.modulePastSummary ?? context.modulePastSummary,
-    moduleNextSummary: enrichment?.moduleNextSummary ?? context.moduleNextSummary
-  };
-
-  const summary = buildFallbackSummary(
-    enrichedContext,
-    enrichment?.courseSnapshot,
-    enrichment?.assignmentSnapshot,
-    enrichment?.gradeSnapshot,
-    enrichment ? "canvas_api" : "dom_fallback"
-  );
-
-  summaryByTab.set(tabId, summary);
-  return summary;
+  return null;
 }
 
 function canUseSidePanelForUrl(url?: string) {
@@ -198,7 +275,8 @@ async function maybeEnableSidePanel(tabId: number, url?: string) {
 }
 
 chrome.runtime.onInstalled.addListener(async () => {
-  await saveSettings(DEFAULT_SETTINGS);
+  await ensureSettingsInitialized();
+  await syncDynamicWebUiContentScript();
 
   if (chrome.sidePanel?.setPanelBehavior) {
     await chrome.sidePanel.setPanelBehavior({
@@ -208,11 +286,23 @@ chrome.runtime.onInstalled.addListener(async () => {
 });
 
 chrome.runtime.onStartup?.addListener(async () => {
+  await ensureSettingsInitialized();
+  await syncDynamicWebUiContentScript();
+
   if (chrome.sidePanel?.setPanelBehavior) {
     await chrome.sidePanel.setPanelBehavior({
       openPanelOnActionClick: true
     });
   }
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local" || !(STORAGE_KEYS.settings in changes)) {
+    return;
+  }
+
+  void syncDynamicWebUiContentScript();
+  void notifyActiveTabChanged("settings-updated");
 });
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
@@ -247,10 +337,27 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         sendResponse({ ok: true } satisfies MessageResponseMap["PAGE_CONTEXT_UPDATED"]);
         return;
       }
+      case "WEB_APP_AUTH_UPDATED": {
+        if (message.payload.accessToken?.trim()) {
+          await saveWebAuthToken(message.payload.accessToken);
+        } else {
+          await clearWebAuthToken();
+          lastSessionState = null;
+        }
+        await notifyActiveTabChanged("web-auth-updated", sender.tab?.id);
+        sendResponse({ ok: true } satisfies MessageResponseMap["WEB_APP_AUTH_UPDATED"]);
+        return;
+      }
       case "GET_ACTIVE_TAB_STATE": {
         const tabId = await getActiveTabId();
         const settings = await getSettings();
-        const hasToken = Boolean(await getCanvasToken());
+        const authToken = await getWebAuthToken();
+        const sessionState =
+          authToken ? await fetchExtensionSessionState(settings, authToken) : null;
+        lastSessionState = sessionState;
+        if (authToken && !sessionState?.authenticated) {
+          await clearWebAuthToken();
+        }
         const context = tabId != null ? (await requestContextFromTab(tabId)) : null;
         const summary = tabId != null ? summaryByTab.get(tabId) ?? null : null;
 
@@ -258,7 +365,8 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           context,
           summary,
           settings,
-          hasToken
+          isAuthenticated: Boolean(sessionState?.authenticated),
+          hasCanvasToken: Boolean(sessionState?.hasCanvasToken)
         } satisfies MessageResponseMap["GET_ACTIVE_TAB_STATE"]);
         return;
       }
@@ -273,7 +381,15 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       }
       case "ASK_AGENT": {
         const settings = await getSettings();
-        sendResponse(await askAgent(settings, message.payload));
+        const authToken = await getWebAuthToken();
+        if (!authToken) {
+          sendResponse({
+            answer: "Sign in through the Web UI first, then return to Canvas and reopen the extension.",
+            followups: ["Open Web UI login", "Open Web UI settings"]
+          } satisfies MessageResponseMap["ASK_AGENT"]);
+          return;
+        }
+        sendResponse(await askAgent(settings, message.payload, authToken));
         return;
       }
       case "OPEN_OPTIONS": {
@@ -309,6 +425,22 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           ok: true,
           fallbackToOptions: true
         } satisfies MessageResponseMap["OPEN_WEB_APP_TOKEN_PAGE"]);
+        return;
+      }
+      case "OPEN_WEB_APP_LOGIN": {
+        const settings = await getSettings();
+        const tabId = await getActiveTabId();
+        const tab = tabId != null ? await getTabById(tabId) : null;
+        const loginBase = resolveWebAppBaseUrl(settings).trim();
+        const loginUrl = new URL("/login", loginBase);
+        if (tab?.url) {
+          loginUrl.searchParams.set("next", tab.url);
+        }
+
+        await chrome.tabs.create({
+          url: loginUrl.toString()
+        });
+        sendResponse({ ok: true } satisfies MessageResponseMap["OPEN_WEB_APP_LOGIN"]);
         return;
       }
       default: {

@@ -26,6 +26,19 @@ export interface CardDataSources {
   checklist: SummaryDataSource;
 }
 
+export interface ExtensionCourseMatch {
+  courseUuid: string;
+  courseCode?: string;
+  courseName?: string | null;
+  matchSource: "canvas_mapping" | "text_match";
+}
+
+export interface ExtensionWeeklyPulseSummary {
+  generatedAt?: string | null;
+  pastWeekLearned: string;
+  nextWeekPreview: string;
+}
+
 export interface ContextSummaryResponse {
   riskLevel: "low" | "medium" | "high";
   pageSummary: string;
@@ -37,6 +50,8 @@ export interface ContextSummaryResponse {
   courseSnapshot?: CanvasCourseSnapshot;
   assignmentSnapshot?: CanvasAssignmentSnapshot;
   gradeSnapshot?: CanvasGradeSnapshot;
+  courseMatch?: ExtensionCourseMatch;
+  weeklyPulse?: ExtensionWeeklyPulseSummary;
   context: CanvasPageContext;
 }
 

@@ -1,19 +1,16 @@
 import { useEffect, useState } from "react";
 import type { ExtensionSettings } from "../lib/types/settings";
 import { getSettings, saveSettings } from "../lib/storage/settings-store";
-import { clearCanvasToken, getCanvasToken, saveCanvasToken } from "../lib/storage/token-store";
 import { DEFAULT_SETTINGS } from "../shared/constants";
 
 export function OptionsPage() {
   const [settings, setSettings] = useState<ExtensionSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState("");
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     void (async () => {
       setSettings(await getSettings());
-      setToken((await getCanvasToken()) ?? "");
       setLoading(false);
     })();
   }, []);
@@ -27,48 +24,27 @@ export function OptionsPage() {
 
     await saveSettings(settings);
 
-    if (token.trim()) {
-      await saveCanvasToken(token);
-    } else {
-      await clearCanvasToken();
-    }
-
     setSaved(true);
     window.setTimeout(() => setSaved(false), 1800);
-  }
-
-  async function handleClearToken() {
-    await clearCanvasToken();
-    setToken("");
   }
 
   return (
     <main className="page-shell">
       <section className="hero">
         <div className="eyebrow">Course Survival Agent</div>
-        <h1>Extension settings</h1>
-        <p>Manual-token prototype mode for Canvas companion sidebar demos.</p>
+        <h1>Debug settings</h1>
+        <p>Local extension configuration for development, debugging, and demo routing.</p>
       </section>
 
       <section className="card warning-card">
-        <strong>Prototype warning</strong>
+        <strong>Developer-only settings</strong>
         <p>
-          Your Canvas access token is stored locally in this browser using Chrome
-          extension storage. Do not use a shared machine or a high-privilege token.
+          Login, Canvas PAT, and course-linked data all come from the Web UI and server.
+          This page is only for local URLs and debug behavior.
         </p>
       </section>
 
       <form className="card form" onSubmit={handleSave}>
-        <label>
-          <span>Canvas access token</span>
-          <textarea
-            rows={5}
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
-            placeholder="Paste personal Canvas token here"
-          />
-        </label>
-
         <label>
           <span>Backend base URL</span>
           <input
@@ -84,7 +60,7 @@ export function OptionsPage() {
         </label>
 
         <label>
-          <span>Full web app URL</span>
+          <span>Web UI URL</span>
           <input
             type="url"
             value={settings.webAppBaseUrl}
@@ -95,35 +71,6 @@ export function OptionsPage() {
               }))
             }
           />
-        </label>
-
-        <label>
-          <span>Web UI token page URL</span>
-          <input
-            type="url"
-            value={settings.webAppTokenUrl}
-            onChange={(event) =>
-              setSettings((current) => ({
-                ...current,
-                webAppTokenUrl: event.target.value
-              }))
-            }
-            placeholder="Defaults to the Web UI /settings page"
-          />
-        </label>
-
-        <label className="toggle">
-          <input
-            type="checkbox"
-            checked={settings.enableCanvasApiEnrichment}
-            onChange={(event) =>
-              setSettings((current) => ({
-                ...current,
-                enableCanvasApiEnrichment: event.target.checked
-              }))
-            }
-          />
-          <span>Use token for richer Canvas API enrichment</span>
         </label>
 
         <label className="toggle">
@@ -141,13 +88,10 @@ export function OptionsPage() {
         </label>
 
         <div className="actions">
-          <button type="submit" className="button primary">Save settings</button>
-          <button type="button" className="button secondary" onClick={() => void handleClearToken()}>
-            Clear token
-          </button>
+          <button type="submit" className="button primary">Save debug settings</button>
         </div>
 
-        {saved && <p className="saved">Settings saved locally.</p>}
+        {saved && <p className="saved">Debug settings saved locally.</p>}
       </form>
     </main>
   );

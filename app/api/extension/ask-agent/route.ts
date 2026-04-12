@@ -6,6 +6,7 @@ import {
 } from "@/lib/extension/context";
 import { ExtensionAskAgentRequestSchema } from "@/lib/extension/request-schemas";
 import { generateTextWithAI, resolveAIConfig } from "@/lib/ai/client";
+import { getUserFromRequest } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -21,6 +22,11 @@ function fallbackAnswer(question: string, summaryText: string) {
 
 export async function POST(req: NextRequest) {
   try {
+    const user = await getUserFromRequest(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     let json: unknown;
     try {
       json = await req.json();
@@ -33,9 +39,9 @@ export async function POST(req: NextRequest) {
       question: string;
     };
 
-    const { summary, matchedCourse, assignmentRequirements } = await buildAskAgentContext(context);
+    const { summary, matchedCourse, assignmentRequirements } = await buildAskAgentContext(context, user.id);
 
-    const aiConfig = await resolveAIConfig();
+    const aiConfig = await resolveAIConfig(user.id);
     if (!aiConfig) {
       return NextResponse.json(
         fallbackAnswer(question, summary.pageSummary)

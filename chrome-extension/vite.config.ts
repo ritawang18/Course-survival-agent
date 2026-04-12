@@ -1,9 +1,23 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: "copy-extension-manifest",
+      async closeBundle() {
+        const manifestPath = resolve(__dirname, "public/manifest.json");
+        const outDir = resolve(__dirname, "dist");
+        const outManifestPath = resolve(outDir, "manifest.json");
+        const manifest = await readFile(manifestPath, "utf8");
+        await mkdir(outDir, { recursive: true });
+        await writeFile(outManifestPath, manifest, "utf8");
+      }
+    }
+  ],
   publicDir: "public",
   build: {
     outDir: "dist",

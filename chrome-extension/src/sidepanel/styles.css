@@ -91,6 +91,56 @@ input {
   background: rgba(255, 247, 235, 0.95);
 }
 
+.status-card {
+  padding: 12px 14px;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.status-item {
+  border: 1px solid rgba(18, 33, 38, 0.08);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(244, 247, 248, 0.72);
+}
+
+.status-item-wide {
+  grid-column: 1 / -1;
+}
+
+.status-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #4f6a72;
+  margin-bottom: 4px;
+}
+
+.status-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #18303a;
+  line-height: 1.35;
+}
+
+.status-value.is-ok {
+  color: #186a3b;
+}
+
+.status-value.is-missing {
+  color: #915d00;
+}
+
+.status-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #597077;
+}
+
 .risk-pill,
 .page-pill {
   font-size: 11px;
@@ -280,6 +330,29 @@ input {
   margin-top: 4px;
   font-size: 12px;
   color: #597077;
+}
+
+.pulse-block {
+  border: 1px solid rgba(18, 33, 38, 0.08);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(244, 247, 248, 0.72);
+}
+
+.pulse-block + .pulse-block {
+  margin-top: 10px;
+}
+
+.pulse-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #4f6a72;
+  margin-bottom: 6px;
+}
+
+.pulse-block p {
+  margin: 0;
 }
 
 .deadline-list {

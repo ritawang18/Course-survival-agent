@@ -9,6 +9,12 @@ interface SummaryPayload {
   assignmentSnapshot?: CanvasAssignmentSnapshot;
 }
 
+export interface ExtensionSessionState {
+  authenticated: boolean;
+  hasCanvasToken: boolean;
+  email?: string | null;
+}
+
 function promptsForPage(pageType: CanvasPageType) {
   switch (pageType) {
     case "course_home":
@@ -242,17 +248,22 @@ export function buildFallbackSummary(
 
 export async function fetchContextSummary(
   settings: ExtensionSettings,
-  payload: SummaryPayload
+  payload: SummaryPayload,
+  authToken: string
 ): Promise<ContextSummaryResponse | null> {
   try {
     const response = await fetch(`${resolveBackendBaseUrl(settings)}/extension/context-summary`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`
       },
-      credentials: "include",
       body: JSON.stringify(payload)
     });
+
+    if (response.status === 401) {
+      throw new Error("UNAUTHORIZED");
+    }
 
     if (!response.ok) {
       throw new Error(`Backend request failed: ${response.status}`);
@@ -266,17 +277,22 @@ export async function fetchContextSummary(
 
 export async function askAgent(
   settings: ExtensionSettings,
-  request: AskAgentRequest
+  request: AskAgentRequest,
+  authToken: string
 ): Promise<AskAgentResponse> {
   try {
     const response = await fetch(`${resolveBackendBaseUrl(settings)}/extension/ask-agent`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`
       },
-      credentials: "include",
       body: JSON.stringify(request)
     });
+
+    if (response.status === 401) {
+      throw new Error("UNAUTHORIZED");
+    }
 
     if (!response.ok) {
       throw new Error(`Backend request failed: ${response.status}`);
@@ -289,5 +305,34 @@ export async function askAgent(
         "Backend unavailable, so this is a local fallback. Focus on the current page, check hidden requirements, and complete the top checklist items before moving on.",
       followups: promptsForPage(request.context.pageType)
     };
+  }
+}
+
+export async function fetchExtensionSessionState(
+  settings: ExtensionSettings,
+  authToken: string
+): Promise<ExtensionSessionState | null> {
+  try {
+    const response = await fetch(`${resolveBackendBaseUrl(settings)}/extension/session-state`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${authToken}`
+      }
+    });
+
+    if (response.status === 401) {
+      return {
+        authenticated: false,
+        hasCanvasToken: false
+      };
+    }
+
+    if (!response.ok) {
+      throw new Error(`Backend request failed: ${response.status}`);
+    }
+
+    return (await response.json()) as ExtensionSessionState;
+  } catch {
+    return null;
   }
 }
