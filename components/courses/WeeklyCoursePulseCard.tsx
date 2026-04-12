@@ -61,6 +61,7 @@ export function WeeklyCoursePulseCard({ course }: { course: Course }) {
           <Badge variant={pulse ? "accent" : "muted"}>
             {pulse ? `${Math.round(pulse.pulse.confidence * 100)}% confidence` : "No pulse yet"}
           </Badge>
+          {pulse?.needsRefresh && <Badge variant="warning">Needs refresh</Badge>}
           {sourceBadges.map((item) => {
             const Icon = item.icon;
             return (
@@ -74,6 +75,7 @@ export function WeeklyCoursePulseCard({ course }: { course: Course }) {
 
         <div className="text-[11px] text-muted">
           {formatGeneratedAt(pulse?.generatedAt)}
+          {pulse?.ageDays != null ? ` · ${pulse.ageDays.toFixed(1)} days old` : ""}
         </div>
 
         {pulse ? (
@@ -109,6 +111,42 @@ export function WeeklyCoursePulseCard({ course }: { course: Course }) {
                 </div>
               )}
             </section>
+
+            <section className="space-y-2">
+              <div className="text-xs font-medium uppercase tracking-wider text-muted">
+                Sources Used
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {renderSourceFlag("Syllabus", pulse.sourceSummary.usedSyllabus)}
+                {renderSourceFlag("Assignments", pulse.sourceSummary.usedAssignments)}
+                {renderSourceFlag("Grades", pulse.sourceSummary.usedGrades)}
+                {renderSourceFlag("Study plan", pulse.sourceSummary.usedStudyPlan)}
+                {renderSourceFlag("Canvas assignments", pulse.sourceSummary.usedCanvasAssignments)}
+                {renderSourceFlag("Canvas modules", pulse.sourceSummary.usedCanvasModules)}
+              </div>
+            </section>
+
+            <details className="rounded-xl border border-border/60 p-3">
+              <summary className="cursor-pointer text-xs font-medium text-muted">
+                Debug context
+              </summary>
+              <div className="mt-3 space-y-3">
+                <div className="text-[11px] text-muted">
+                  This helps verify exactly which database and Canvas signals were available when the pulse was generated.
+                </div>
+                <pre className="overflow-auto rounded-lg bg-[hsl(var(--surface-2))] p-3 text-[11px] leading-relaxed text-muted">
+                  {JSON.stringify(
+                    {
+                      generatedAt: pulse.generatedAt,
+                      sourceSummary: pulse.sourceSummary,
+                      rawContext: pulse.rawContext ?? null,
+                    },
+                    null,
+                    2
+                  )}
+                </pre>
+              </div>
+            </details>
           </>
         ) : (
           <p className="text-sm text-muted">
@@ -117,5 +155,13 @@ export function WeeklyCoursePulseCard({ course }: { course: Course }) {
         )}
       </CardBody>
     </Card>
+  );
+}
+
+function renderSourceFlag(label: string, active: boolean) {
+  return (
+    <Badge key={label} variant={active ? "accent" : "muted"}>
+      {label}
+    </Badge>
   );
 }

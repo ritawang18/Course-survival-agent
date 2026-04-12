@@ -31,6 +31,12 @@ interface DbCourseRow {
   created_at: string | null;
 }
 
+interface DbCourseCanvasSettingsRow {
+  course_uuid: string;
+  canvas_course_id: string | null;
+  canvas_base_url: string | null;
+}
+
 interface DbAssignmentRow {
   id: string;
   course_id: string;
@@ -110,9 +116,15 @@ interface DbWeeklyCoursePulseRow {
   past_week_evidence: WeeklyCoursePulseRecord["pulse"]["pastWeekEvidence"] | null;
   next_week_evidence: WeeklyCoursePulseRecord["pulse"]["nextWeekEvidence"] | null;
   confidence: number | null;
+  raw_context?: unknown;
 }
 
 function mapDbPulseRowToRecord(row: DbWeeklyCoursePulseRow): WeeklyCoursePulseRecord {
+  const generatedAt = row.generated_at ?? new Date().toISOString();
+  const ageMs = Math.max(0, Date.now() - new Date(generatedAt).getTime());
+  const ageDays = Number.isFinite(ageMs) ? ageMs / (1000 * 60 * 60 * 24) : 0;
+  const isStale = ageDays >= 6;
+
   return {
     courseUuid: row.course_uuid,
     courseId: row.course_id,
@@ -122,12 +134,18 @@ function mapDbPulseRowToRecord(row: DbWeeklyCoursePulseRow): WeeklyCoursePulseRe
     pastWindowEnd: row.past_window_end,
     futureWindowStart: row.future_window_start,
     futureWindowEnd: row.future_window_end,
-    generatedAt: row.generated_at ?? new Date().toISOString(),
+    generatedAt,
     model: row.model,
     sourceSummary:
       row.source_summary ?? {
         hasDatabaseContext: true,
         hasCanvasApiContext: false,
+        usedSyllabus: false,
+        usedAssignments: false,
+        usedGrades: false,
+        usedStudyPlan: false,
+        usedCanvasAssignments: false,
+        usedCanvasModules: false,
       },
     pulse: {
       pastWeekLearned: row.past_week_learned,
@@ -136,6 +154,10 @@ function mapDbPulseRowToRecord(row: DbWeeklyCoursePulseRow): WeeklyCoursePulseRe
       nextWeekEvidence: row.next_week_evidence ?? [],
       confidence: row.confidence ?? 0,
     },
+    ageDays,
+    isStale,
+    needsRefresh: isStale,
+    rawContext: row.raw_context,
   };
 }
 
@@ -698,6 +720,7 @@ export async function GET(req: NextRequest) {
       studyPlanBlockRows,
       professorInsightRows,
       pulseRows,
+      courseCanvasSettingsRows,
     ] = await Promise.all([
       resolveOptionalRows<DbAssignmentRow>(
         supabase
@@ -771,6 +794,7 @@ export async function GET(req: NextRequest) {
               "past_week_evidence",
               "next_week_evidence",
               "confidence",
+              "raw_context",
             ].join(", ")
           )
           .in("course_uuid", courseUuids)
@@ -780,6 +804,13 @@ export async function GET(req: NextRequest) {
             error: { code?: string; message: string } | null;
           }>,
         "weekly_course_pulse"
+      ),
+      resolveOptionalRows<DbCourseCanvasSettingsRow>(
+        supabase
+          .from("course_canvas_settings")
+          .select("course_uuid, canvas_course_id, canvas_base_url")
+          .in("course_uuid", courseUuids),
+        "course_canvas_settings"
       ),
     ]);
 
@@ -824,6 +855,9 @@ export async function GET(req: NextRequest) {
     const insightsByCourseUuid = new Map(
       insights.map((row) => [row.courseId!, row] as const)
     );
+    const courseCanvasSettingsByUuid = new Map(
+      courseCanvasSettingsRows.map((row) => [row.course_uuid, row] as const)
+    );
 
     const exams = dedupeExams(
       normalizedCourseRows.flatMap((courseRow) => {
@@ -858,6 +892,7 @@ export async function GET(req: NextRequest) {
       const courseAssignments = assignmentsByCourse.get(row.id) ?? [];
       const courseExams = examsByCourse.get(row.id) ?? [];
       const insight = insightsByCourseUuid.get(row.id);
+      const canvasSettings = courseCanvasSettingsByUuid.get(row.id);
       const derivedFiles = buildDerivedFiles(row, syllabus, courseAssignments);
       const derivedModules = buildDerivedModules(pulse, courseAssignments);
       const derivedMockExamQuestions = buildMockExamQuestions(courseExams, pulse);
@@ -878,6 +913,8 @@ export async function GET(req: NextRequest) {
         course_id: row.course_id,
         course_name: row.course_name ?? row.course_id,
         instructor_name: row.instructor_name ?? undefined,
+        canvas_course_id: canvasSettings?.canvas_course_id ?? undefined,
+        canvas_base_url: canvasSettings?.canvas_base_url ?? undefined,
         credits: row.credits ?? 0,
         schedule: row.schedule ?? "",
         current_grade_percent: currentGradePercent,

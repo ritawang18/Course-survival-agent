@@ -51,6 +51,18 @@ function cleanTextResponse(text: string) {
     .trim();
 }
 
+function ensureStructuredJsonInstructions(system: string, prompt: string) {
+  const mentionsJson = /\bjson\b/i.test(system) || /\bjson\b/i.test(prompt);
+  if (mentionsJson) {
+    return { system, prompt };
+  }
+
+  return {
+    system: `${system} Return a valid JSON object only.`,
+    prompt: `Return only JSON that matches the requested schema.\n\n${prompt}`,
+  };
+}
+
 function parseJsonText<T>(text: string, schema?: z.ZodType<T>): T {
   const cleaned = cleanTextResponse(text);
   let parsed: unknown;
@@ -62,6 +74,22 @@ function parseJsonText<T>(text: string, schema?: z.ZodType<T>): T {
   }
 
   return schema ? schema.parse(parsed) : (parsed as T);
+}
+
+function formatSchemaIssues(error: unknown) {
+  if (!(error instanceof z.ZodError)) {
+    return null;
+  }
+
+  return JSON.stringify(
+    error.issues.map((issue) => ({
+      path: issue.path.join("."),
+      message: issue.message,
+      code: issue.code,
+    })),
+    null,
+    2
+  );
 }
 
 function getEnvApiKey(provider: AIProvider): string | null {
@@ -268,23 +296,80 @@ export async function generateObjectWithAI<T>(input: GenerateObjectInput<T>) {
     throw new Error("Missing AI config for generateObjectWithAI");
   }
 
-  let text: string;
-  switch (config.provider) {
-    case "openai":
-      text = await callOpenAI({ ...input, config, structured: true });
-      break;
-    case "anthropic":
-      text = await callAnthropic({ ...input, config });
-      break;
-    case "gemini":
-      text = await callGemini({ ...input, config, structured: true });
-      break;
-    default:
-      throw new Error("Unsupported AI provider");
+  const resolvedConfig = config;
+  const structuredInput = ensureStructuredJsonInstructions(input.system, input.prompt);
+  const maxOutputTokens = input.maxOutputTokens ?? 4096;
+
+  async function requestStructuredText(system: string, prompt: string) {
+    switch (resolvedConfig.provider) {
+      case "openai":
+        return callOpenAI({
+          ...input,
+          config: resolvedConfig,
+          system,
+          prompt,
+          maxOutputTokens,
+          structured: true,
+        });
+      case "anthropic":
+        return callAnthropic({
+          ...input,
+          config: resolvedConfig,
+          system,
+          prompt,
+          maxOutputTokens,
+        });
+      case "gemini":
+        return callGemini({
+          ...input,
+          config: resolvedConfig,
+          system,
+          prompt,
+          maxOutputTokens,
+          structured: true,
+        });
+      default:
+        throw new Error("Unsupported AI provider");
+    }
   }
 
-  return {
-    text,
-    object: parseJsonText<T>(text, input.schema),
-  };
+  const text = await requestStructuredText(structuredInput.system, structuredInput.prompt);
+
+  try {
+    return {
+      text,
+      object: parseJsonText<T>(text, input.schema),
+    };
+  } catch (parseError) {
+    const schemaIssues = formatSchemaIssues(parseError);
+    const retrySystem =
+      `${structuredInput.system} ` +
+      "Your response must be strict, complete, valid JSON with properly escaped strings.";
+    const retryPrompt =
+      `${structuredInput.prompt}\n\n` +
+      "Return the full JSON object only. " +
+      "Do not include markdown. " +
+      "Do not include commentary before or after the JSON. " +
+      "Make all string values short and concise so the JSON is not truncated." +
+      (schemaIssues
+        ? `\n\nThe previous response failed schema validation with these issues:\n${schemaIssues}\nFix every issue and include every required field.`
+        : "");
+    const retryText = await requestStructuredText(retrySystem, retryPrompt);
+
+    try {
+      return {
+        text: retryText,
+        object: parseJsonText<T>(retryText, input.schema),
+      };
+    } catch (retryParseError) {
+      const message =
+        retryParseError instanceof Error
+          ? retryParseError.message
+          : parseError instanceof Error
+            ? parseError.message
+            : "Model returned invalid JSON";
+      throw new Error(message);
+    }
+  }
+
 }

@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getUserFromRequest, getServiceClient } from "@/lib/supabase/server";
 import { getWeeklyCoursePulse, upsertWeeklyCoursePulse } from "@/lib/db/weekly_course_pulse";
-import { generateWeeklyCoursePulse } from "@/lib/skills/generateWeeklyCoursePulse";
+import {
+  generateWeeklyCoursePulse,
+  WeeklyCoursePulseError,
+} from "@/lib/skills/generateWeeklyCoursePulse";
 import { getUserIntegrationToken } from "@/lib/db/user_integration_tokens";
 import { requireAIConfig } from "@/lib/ai/client";
 
@@ -41,19 +44,42 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (courseError) {
-      throw new Error(`Course authorization lookup failed: ${courseError.message}`);
+      return NextResponse.json(
+        {
+          error: `Course authorization lookup failed: ${courseError.message}`,
+          reason: "database_lookup_failed",
+        },
+        { status: 500 }
+      );
     }
     if (!course) {
-      return NextResponse.json({ error: "Course not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Course not found", reason: "course_not_found" },
+        { status: 404 }
+      );
     }
 
     const storedCanvasToken = await getUserIntegrationToken(user.id, "canvas");
-    const aiConfig = await requireAIConfig(user.id);
+    let aiConfig;
+    try {
+      aiConfig = await requireAIConfig(user.id);
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Missing AI config for weekly course pulse generation",
+          reason: "missing_ai_config",
+        },
+        { status: 400 }
+      );
+    }
 
     const anchorDate =
       body.referenceDate && !Number.isNaN(new Date(body.referenceDate).getTime())
         ? body.referenceDate.slice(0, 10)
-        : new Date().toISOString().slice(0, 10);
+        : mostRecentFridayIso(new Date());
 
     if (!body.forceRefresh) {
       const cached = await getWeeklyCoursePulse(body.courseUuid, anchorDate);
@@ -75,7 +101,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, cached: false, pulse: saved });
   } catch (err) {
     console.error("[weekly-course-pulse/generate]", err);
+    if (err instanceof WeeklyCoursePulseError) {
+      const statusByReason: Record<WeeklyCoursePulseError["reason"], number> = {
+        course_not_found: 404,
+        database_lookup_failed: 500,
+        canvas_enrichment_unavailable: 502,
+        llm_generation_failed: 502,
+        invalid_reference_date: 400,
+      };
+
+      return NextResponse.json(
+        { error: err.message, reason: err.reason },
+        { status: statusByReason[err.reason] }
+      );
+    }
     const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: message, reason: "internal" },
+      { status: 500 }
+    );
   }
+}
+
+function mostRecentFridayIso(input: Date) {
+  const next = new Date(input);
+  const distance = (next.getDay() + 2) % 7;
+  next.setDate(next.getDate() - distance);
+  return next.toISOString().slice(0, 10);
 }

@@ -1,5 +1,6 @@
 import { addDays, endOfDay, formatISO, startOfDay, subDays } from "date-fns";
 import { getServiceClient } from "@/lib/supabase/server";
+import { getCourseCanvasSettings } from "@/lib/db/course_canvas_settings";
 import { generateObjectWithAI, type AIConfig } from "@/lib/ai/client";
 import {
   WeeklyCoursePulseGenerationSchema,
@@ -112,6 +113,21 @@ export interface GenerateWeeklyCoursePulseResult extends WeeklyCoursePulseRecord
   sourceSummary: WeeklyCoursePulseSourceSummary;
 }
 
+export class WeeklyCoursePulseError extends Error {
+  constructor(
+    public reason:
+      | "course_not_found"
+      | "database_lookup_failed"
+      | "canvas_enrichment_unavailable"
+      | "llm_generation_failed"
+      | "invalid_reference_date",
+    message: string
+  ) {
+    super(message);
+    this.name = "WeeklyCoursePulseError";
+  }
+}
+
 function toIsoDay(date: Date): string {
   return formatISO(date, { representation: "date" });
 }
@@ -179,14 +195,14 @@ async function gatherContext(
   const supabase = getServiceClient();
   const anchor = input.referenceDate ? new Date(input.referenceDate) : new Date();
   if (Number.isNaN(anchor.getTime())) {
-    throw new Error("Invalid referenceDate");
+    throw new WeeklyCoursePulseError("invalid_reference_date", "Invalid referenceDate");
   }
-
-  const anchorDate = toIsoDay(anchor);
-  const pastStart = startOfDay(subDays(anchor, 7));
-  const pastEnd = endOfDay(anchor);
-  const futureStart = startOfDay(anchor);
-  const futureEnd = endOfDay(addDays(anchor, 7));
+  const anchorPoint = toMostRecentFriday(anchor);
+  const anchorDate = toIsoDay(anchorPoint);
+  const pastStart = startOfDay(subDays(anchorPoint, 7));
+  const pastEnd = endOfDay(anchorPoint);
+  const futureStart = startOfDay(anchorPoint);
+  const futureEnd = endOfDay(addDays(anchorPoint, 7));
 
   const { data: course, error: courseError } = await supabase
     .from("courses")
@@ -195,17 +211,25 @@ async function gatherContext(
     .maybeSingle();
 
   if (courseError) {
-    throw new Error(`Weekly pulse course lookup failed: ${courseError.message}`);
+    throw new WeeklyCoursePulseError(
+      "database_lookup_failed",
+      `Weekly pulse course lookup failed: ${courseError.message}`
+    );
   }
   if (!course) {
-    throw new Error(`Course not found for uuid ${input.courseUuid}`);
+    throw new WeeklyCoursePulseError(
+      "course_not_found",
+      `Course not found for uuid ${input.courseUuid}`
+    );
   }
 
-  const [syllabusResult, gradeResult, studyPlanResult, assignmentsResult] = await Promise.all([
+  const courseRow = course as DbCourseRow;
+
+  const [syllabusResult, gradeResult, studyPlanResult, assignmentsResult, courseCanvasSettings] = await Promise.all([
     supabase
       .from("syllabus")
       .select("course_id, break_down, exam_dates, project_date, cut_off")
-      .eq("course_id", (course as DbCourseRow).course_id)
+      .eq("course_id", courseRow.course_id)
       .maybeSingle(),
     supabase
       .from("course_grades")
@@ -224,19 +248,32 @@ async function gatherContext(
       )
       .eq("course_id", input.courseUuid)
       .order("due_at", { ascending: true }),
+    getCourseCanvasSettings(input.courseUuid),
   ]);
 
   if (syllabusResult.error) {
-    throw new Error(`Weekly pulse syllabus lookup failed: ${syllabusResult.error.message}`);
+    throw new WeeklyCoursePulseError(
+      "database_lookup_failed",
+      `Weekly pulse syllabus lookup failed: ${syllabusResult.error.message}`
+    );
   }
   if (gradeResult.error) {
-    throw new Error(`Weekly pulse grade lookup failed: ${gradeResult.error.message}`);
+    throw new WeeklyCoursePulseError(
+      "database_lookup_failed",
+      `Weekly pulse grade lookup failed: ${gradeResult.error.message}`
+    );
   }
   if (studyPlanResult.error) {
-    throw new Error(`Weekly pulse study plan lookup failed: ${studyPlanResult.error.message}`);
+    throw new WeeklyCoursePulseError(
+      "database_lookup_failed",
+      `Weekly pulse study plan lookup failed: ${studyPlanResult.error.message}`
+    );
   }
   if (assignmentsResult.error) {
-    throw new Error(`Weekly pulse assignments lookup failed: ${assignmentsResult.error.message}`);
+    throw new WeeklyCoursePulseError(
+      "database_lookup_failed",
+      `Weekly pulse assignments lookup failed: ${assignmentsResult.error.message}`
+    );
   }
 
   const dbAssignments = (assignmentsResult.data ?? []) as DbAssignmentRow[];
@@ -247,11 +284,16 @@ async function gatherContext(
   let canvasAssignmentsNextWeek: CanvasAssignmentSummary[] = [];
   let canvasModules: CanvasModuleSummary[] = [];
 
-  if (input.canvasBaseUrl && input.canvasAccessToken && input.canvasCourseId) {
+  const effectiveCanvasBaseUrl =
+    input.canvasBaseUrl ?? courseCanvasSettings?.canvas_base_url ?? undefined;
+  const effectiveCanvasCourseId =
+    input.canvasCourseId ?? courseCanvasSettings?.canvas_course_id ?? undefined;
+
+  if (effectiveCanvasBaseUrl && input.canvasAccessToken && effectiveCanvasCourseId) {
     try {
       const [canvasAssignments, modules] = await Promise.all([
-        fetchCanvasAssignments(input.canvasBaseUrl, input.canvasCourseId, input.canvasAccessToken),
-        fetchCanvasModules(input.canvasBaseUrl, input.canvasCourseId, input.canvasAccessToken),
+        fetchCanvasAssignments(effectiveCanvasBaseUrl, effectiveCanvasCourseId, input.canvasAccessToken),
+        fetchCanvasModules(effectiveCanvasBaseUrl, effectiveCanvasCourseId, input.canvasAccessToken),
       ]);
 
       canvasAssignmentsPastWeek = canvasAssignments.filter((item) =>
@@ -263,6 +305,10 @@ async function gatherContext(
       canvasModules = modules;
     } catch (err) {
       console.error("[weekly-course-pulse] Canvas enrichment failed", err);
+      throw new WeeklyCoursePulseError(
+        "canvas_enrichment_unavailable",
+        err instanceof Error ? err.message : "Canvas enrichment failed"
+      );
     }
   }
 
@@ -291,6 +337,14 @@ async function gatherContext(
         context.canvasAssignmentsPastWeek.length > 0 ||
         context.canvasAssignmentsNextWeek.length > 0 ||
         context.canvasModules.length > 0,
+      usedSyllabus: !!context.syllabus,
+      usedAssignments:
+        context.assignmentsPastWeek.length > 0 || context.assignmentsNextWeek.length > 0,
+      usedGrades: !!context.currentGrade,
+      usedStudyPlan: !!context.studyPlan,
+      usedCanvasAssignments:
+        context.canvasAssignmentsPastWeek.length > 0 || context.canvasAssignmentsNextWeek.length > 0,
+      usedCanvasModules: context.canvasModules.length > 0,
     },
     anchorDate,
     pastWindowStart: toIsoDay(pastStart),
@@ -308,30 +362,75 @@ export async function generateWeeklyCoursePulse(
 
   const aiConfig = input.aiConfig;
   if (!aiConfig) {
-    throw new Error("Missing AI config for weekly course pulse generation");
+    throw new WeeklyCoursePulseError(
+      "llm_generation_failed",
+      "Missing AI config for weekly course pulse generation"
+    );
   }
 
-  const result = await generateObjectWithAI({
-    config: aiConfig,
-    schema: WeeklyCoursePulseGenerationSchema,
-    system:
-      "You generate a weekly course pulse for a student support system. " +
-      "You must ground everything in the provided evidence only. " +
-      "Priority when sources disagree: database > canvas_api > inferred. " +
-      "pastWeekLearned should explain what the student most likely covered or completed in the last 7 days. " +
-      "nextWeekPreview should explain what the student is likely to face in the next 7 days. " +
-      "Use uncertainty language when evidence is sparse. Never invent deadlines, policies, or topics. " +
-      "Return concise but specific prose. Each evidence list should contain 2-6 grounded items when possible, fewer if the evidence is weak. " +
-      "Confidence should be low when the input is sparse and higher only when multiple concrete signals align.",
-    prompt: JSON.stringify({
-      anchorDate: gathered.anchorDate,
-      pastWindowStart: gathered.pastWindowStart,
-      pastWindowEnd: gathered.pastWindowEnd,
-      futureWindowStart: gathered.futureWindowStart,
-      futureWindowEnd: gathered.futureWindowEnd,
-      context: gathered.context,
-    }),
-  });
+  let result;
+  try {
+    result = await generateObjectWithAI({
+      config: aiConfig,
+      schema: WeeklyCoursePulseGenerationSchema,
+      maxOutputTokens: 4096,
+      system:
+        "You generate a weekly course pulse for a student support system. " +
+        "You must ground everything in the provided evidence only. " +
+        "Priority when sources disagree: database > canvas_api > inferred. " +
+        "pastWeekLearned should explain what the student most likely covered or completed in the last 7 days. " +
+        "nextWeekPreview should explain what the student is likely to face in the next 7 days. " +
+        "Use uncertainty language when evidence is sparse. Never invent deadlines, policies, or topics. " +
+        "Return concise but specific prose. Keep pastWeekLearned and nextWeekPreview under 120 words each. " +
+        "Keep each evidence detail under 140 characters. " +
+        "Each evidence list should contain 2-6 grounded items when possible, fewer if the evidence is weak. " +
+        "Confidence should be low when the input is sparse and higher only when multiple concrete signals align. " +
+        "Return only strict JSON.",
+      prompt:
+        "Return one JSON object with exactly these top-level keys: " +
+        '"pastWeekLearned", "nextWeekPreview", "pastWeekEvidence", "nextWeekEvidence", "confidence".\n\n' +
+        "Both evidence fields must always be arrays, even when evidence is weak. " +
+        "Confidence must always be a number between 0 and 1.\n\n" +
+        "Required JSON shape example:\n" +
+        JSON.stringify(
+          {
+            pastWeekLearned: "Short grounded summary.",
+            nextWeekPreview: "Short grounded preview.",
+            pastWeekEvidence: [
+              {
+                label: "Example",
+                detail: "Short grounded detail.",
+                source: "database",
+              },
+            ],
+            nextWeekEvidence: [
+              {
+                label: "Example",
+                detail: "Short grounded detail.",
+                source: "canvas_api",
+              },
+            ],
+            confidence: 0.62,
+          },
+          null,
+          2
+        ) +
+        "\n\nContext:\n" +
+        JSON.stringify({
+          anchorDate: gathered.anchorDate,
+          pastWindowStart: gathered.pastWindowStart,
+          pastWindowEnd: gathered.pastWindowEnd,
+          futureWindowStart: gathered.futureWindowStart,
+          futureWindowEnd: gathered.futureWindowEnd,
+          context: gathered.context,
+        }),
+    });
+  } catch (error) {
+    throw new WeeklyCoursePulseError(
+      "llm_generation_failed",
+      error instanceof Error ? error.message : "LLM generation failed"
+    );
+  }
 
   return {
     courseUuid: gathered.context.course.id,
@@ -348,4 +447,12 @@ export async function generateWeeklyCoursePulse(
     pulse: result.object,
     rawContext: gathered.context,
   };
+}
+
+function toMostRecentFriday(input: Date) {
+  const next = new Date(input);
+  const day = next.getDay();
+  const distance = (day + 2) % 7;
+  next.setDate(next.getDate() - distance);
+  return next;
 }

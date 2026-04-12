@@ -1,5 +1,6 @@
 import type { InstructorInsight } from "@/lib/schemas/insight";
 import type { WeeklyCoursePulseRecord } from "@/lib/schemas/weekly-course-pulse";
+import type { DashboardWeeklyOverview } from "@/lib/schemas/dashboard-weekly-overview";
 
 export type CourseColor = "indigo" | "emerald" | "amber" | "rose" | "sky" | "violet";
 
@@ -50,6 +51,8 @@ export interface Course {
   course_name?: string;
   term?: string;
   instructor_name?: string;
+  canvas_course_id?: string;
+  canvas_base_url?: string;
   // ── shared ──
   credits: number;
   schedule: string;
@@ -152,4 +155,5 @@ export interface AppData {
   studyBlocks: StudyBlock[];
   uploads: UploadArtifact[];
   insights: InstructorInsight[];
+  dashboardWeeklyOverview?: DashboardWeeklyOverview;
 }

@@ -42,6 +42,10 @@ interface WeeklyCoursePulseRow {
 }
 
 function mapRowToRecord(row: WeeklyCoursePulseRow): WeeklyCoursePulseRecord {
+  const ageMs = Math.max(0, Date.now() - new Date(row.generated_at).getTime());
+  const ageDays = Number.isFinite(ageMs) ? ageMs / (1000 * 60 * 60 * 24) : 0;
+  const isStale = ageDays >= 6;
+
   return {
     courseUuid: row.course_uuid,
     courseId: row.course_id,
@@ -56,6 +60,12 @@ function mapRowToRecord(row: WeeklyCoursePulseRow): WeeklyCoursePulseRecord {
     sourceSummary: row.source_summary ?? {
       hasDatabaseContext: false,
       hasCanvasApiContext: false,
+      usedSyllabus: false,
+      usedAssignments: false,
+      usedGrades: false,
+      usedStudyPlan: false,
+      usedCanvasAssignments: false,
+      usedCanvasModules: false,
     },
     pulse: {
       pastWeekLearned: row.past_week_learned,
@@ -64,6 +74,9 @@ function mapRowToRecord(row: WeeklyCoursePulseRow): WeeklyCoursePulseRecord {
       nextWeekEvidence: row.next_week_evidence ?? [],
       confidence: row.confidence ?? 0,
     },
+    ageDays,
+    isStale,
+    needsRefresh: isStale,
     rawContext: row.raw_context,
   };
 }

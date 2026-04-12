@@ -146,7 +146,8 @@ interface AppStoreValue {
   updateUpload: (id: string, patch: Partial<UploadArtifact>) => void;
   syncGoogleCalendar: () => Promise<void>;
   refreshWeeklyCoursePulse: (courseId: string) => Promise<void>;
-  fetchProfessorInsight: (courseId: string, options?: { force?: boolean }) => Promise<void>;
+  refreshDashboardWeeklyOverview: () => Promise<void>;
+  fetchProfessorInsight: (courseId: string) => Promise<void>;
   // toast
   toasts: Toast[];
   pushToast: (t: Omit<Toast, "id">) => void;
@@ -155,6 +156,7 @@ interface AppStoreValue {
   replanning: boolean;
   syncing: boolean;
   pulseLoading: Record<string, boolean>;
+  dashboardPulseLoading: boolean;
   insightsLoading: Record<string, boolean>;
 }
 
@@ -165,6 +167,7 @@ const emptyData: AppData = {
   studyBlocks: [],
   uploads: [],
   insights: [],
+  dashboardWeeklyOverview: undefined,
 };
 
 const AppStoreContext = createContext<AppStoreValue | null>(null);
@@ -176,6 +179,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [replanning, setReplanning] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [pulseLoading, setPulseLoading] = useState<Record<string, boolean>>({});
+  const [dashboardPulseLoading, setDashboardPulseLoading] = useState(false);
   const [insightsLoading, setInsightsLoading] = useState<Record<string, boolean>>({});
 
   const pushToast = useCallback((t: Omit<Toast, "id">) => {
@@ -506,13 +510,19 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
           },
           body: JSON.stringify({
             courseUuid: courseId,
+            canvasCourseId: course.canvas_course_id ?? undefined,
+            canvasBaseUrl: course.canvas_base_url ?? undefined,
             forceRefresh: true,
           }),
         });
 
         const json = await res.json().catch(() => null);
         if (!res.ok || !json?.ok || !json?.pulse) {
-          throw new Error(json?.error ?? "Failed to generate weekly course pulse.");
+          throw new Error(
+            json?.reason
+              ? `${json.reason}: ${json.error ?? "Failed to generate weekly course pulse."}`
+              : json?.error ?? "Failed to generate weekly course pulse."
+          );
         }
 
         const nextPulse = json.pulse;
@@ -550,6 +560,87 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     },
     [data.courses, pushToast]
   );
+
+  const refreshDashboardWeeklyOverview = useCallback(async () => {
+    const supabase = getSupabaseClient();
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      pushToast({
+        kind: "error",
+        title: "Could not refresh dashboard overview",
+        description: "You must be signed in.",
+      });
+      return;
+    }
+
+    setDashboardPulseLoading(true);
+    try {
+      const res = await fetch("/api/dashboard-weekly-overview/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          courses: data.courses.map((course) => ({
+            id: course.id,
+            code: course.code,
+            name: course.name,
+            course_id: course.course_id,
+            course_name: course.course_name,
+            current_grade_percent: course.current_grade_percent,
+            weeklyPulse: course.weeklyPulse,
+          })),
+          assignments: data.assignments.map((assignment) => ({
+            course_id: assignment.course_id,
+            title: assignment.title,
+            due_at: assignment.due_at,
+            status: assignment.status,
+            assignment_type: assignment.assignment_type,
+          })),
+          exams: data.exams.map((exam) => ({
+            course_id: exam.course_id,
+            title: exam.title,
+            date: exam.date,
+            weight: exam.weight,
+          })),
+          studyBlocks: data.studyBlocks.map((block) => ({
+            course_id: block.course_id,
+            title: block.title,
+            date: block.date,
+            start: block.start,
+            end: block.end,
+            type: block.type,
+          })),
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok || !json?.overview) {
+        throw new Error(json?.error ?? "Failed to generate dashboard weekly overview.");
+      }
+
+      setData((prev) => ({
+        ...prev,
+        dashboardWeeklyOverview: json.overview,
+      }));
+
+      pushToast({
+        kind: "success",
+        title: "Dashboard overview refreshed",
+        description: `Overall weekly summary generated at ${new Date(json.overview.generatedAt).toLocaleTimeString()}.`,
+      });
+    } catch (err) {
+      pushToast({
+        kind: "error",
+        title: "Could not refresh dashboard overview",
+        description: err instanceof Error ? err.message : "Unexpected error",
+      });
+    } finally {
+      setDashboardPulseLoading(false);
+    }
+  }, [data.assignments, data.courses, data.exams, data.studyBlocks, pushToast]);
 
   const fetchProfessorInsight = useCallback(
     async (courseId: string, options?: { force?: boolean }) => {
@@ -756,6 +847,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       updateUpload,
       syncGoogleCalendar,
       refreshWeeklyCoursePulse,
+      refreshDashboardWeeklyOverview,
       fetchProfessorInsight,
       toasts,
       pushToast,
@@ -763,6 +855,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       replanning,
       syncing,
       pulseLoading,
+      dashboardPulseLoading,
       insightsLoading,
     }),
     [
@@ -777,6 +870,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       updateUpload,
       syncGoogleCalendar,
       refreshWeeklyCoursePulse,
+      refreshDashboardWeeklyOverview,
       fetchProfessorInsight,
       toasts,
       pushToast,
@@ -784,6 +878,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       replanning,
       syncing,
       pulseLoading,
+      dashboardPulseLoading,
       insightsLoading,
     ]
   );

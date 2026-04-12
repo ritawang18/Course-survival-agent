@@ -34,6 +34,12 @@ export const WeeklyCoursePulseGenerationSchema = WeeklyCoursePulseSchema;
 export const WeeklyCoursePulseSourceSummarySchema = z.object({
   hasDatabaseContext: z.boolean(),
   hasCanvasApiContext: z.boolean(),
+  usedSyllabus: z.boolean(),
+  usedAssignments: z.boolean(),
+  usedGrades: z.boolean(),
+  usedStudyPlan: z.boolean(),
+  usedCanvasAssignments: z.boolean(),
+  usedCanvasModules: z.boolean(),
 });
 export type WeeklyCoursePulseSourceSummary = z.infer<typeof WeeklyCoursePulseSourceSummarySchema>;
 
@@ -50,6 +56,9 @@ export const WeeklyCoursePulseRecordSchema = z.object({
   model: z.string().nullable(),
   sourceSummary: WeeklyCoursePulseSourceSummarySchema,
   pulse: WeeklyCoursePulseSchema,
+  ageDays: z.number().nonnegative().optional(),
+  isStale: z.boolean().optional(),
+  needsRefresh: z.boolean().optional(),
   rawContext: z.unknown().optional(),
 });
 export type WeeklyCoursePulseRecord = z.infer<typeof WeeklyCoursePulseRecordSchema>;

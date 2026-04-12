@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceClient, getUserFromRequest } from "@/lib/supabase/server";
 import { getUserIntegrationToken } from "@/lib/db/user_integration_tokens";
+import { listCourseCanvasSettings } from "@/lib/db/course_canvas_settings";
 import { resolveAIConfig } from "@/lib/ai/client";
 import { generateWeeklyCoursePulse } from "@/lib/skills/generateWeeklyCoursePulse";
 import { upsertWeeklyCoursePulse } from "@/lib/db/weekly_course_pulse";
@@ -32,6 +33,10 @@ function isPulseDue(latestGeneratedAt: string | null) {
 async function runForCourses(courses: CourseRow[], forceRefresh: boolean) {
   const supabase = getServiceClient();
   const courseIds = courses.map((course) => course.id);
+  const courseCanvasSettings = await listCourseCanvasSettings(courseIds);
+  const canvasSettingsByCourse = new Map(
+    courseCanvasSettings.map((row) => [row.course_uuid, row] as const)
+  );
 
   const { data: pulseRows, error: pulseError } = await supabase
     .from("weekly_course_pulse")
@@ -79,9 +84,13 @@ async function runForCourses(courses: CourseRow[], forceRefresh: boolean) {
       }
 
       const canvasAccessToken = await getUserIntegrationToken(course.user_id, "canvas");
+      const courseCanvas = canvasSettingsByCourse.get(course.id);
       const generated = await generateWeeklyCoursePulse({
         courseUuid: course.id,
+        canvasCourseId: courseCanvas?.canvas_course_id ?? undefined,
+        canvasBaseUrl: courseCanvas?.canvas_base_url ?? undefined,
         canvasAccessToken: canvasAccessToken ?? undefined,
+        referenceDate: mostRecentFridayIso(new Date()),
         aiConfig,
       });
       await upsertWeeklyCoursePulse(generated);
@@ -100,6 +109,13 @@ async function runForCourses(courses: CourseRow[], forceRefresh: boolean) {
   }
 
   return results;
+}
+
+function mostRecentFridayIso(input: Date) {
+  const next = new Date(input);
+  const distance = (next.getDay() + 2) % 7;
+  next.setDate(next.getDate() - distance);
+  return next.toISOString().slice(0, 10);
 }
 
 async function handleRequest(req: NextRequest) {

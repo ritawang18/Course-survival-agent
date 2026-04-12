@@ -8,6 +8,7 @@ import { LectureModulesList } from "@/components/courses/LectureModulesList";
 import { FilesCard } from "@/components/courses/FilesCard";
 import { AIInsightsCard } from "@/components/courses/AIInsightsCard";
 import { WeeklyCoursePulseCard } from "@/components/courses/WeeklyCoursePulseCard";
+import { CanvasPulseSettingsCard } from "@/components/courses/CanvasPulseSettingsCard";
 import { OfficeHourQuestionsCard } from "@/components/courses/OfficeHourQuestionsCard";
 import { MockExamCard } from "@/components/courses/MockExamCard";
 import { DependencyGraphCard } from "@/components/courses/DependencyGraphCard";
@@ -65,6 +66,7 @@ export default function CourseDetailPage() {
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-5">
               <div className="xl:col-span-2 space-y-4 lg:space-y-5">
                 <WeeklyCoursePulseCard course={course} />
+                <CanvasPulseSettingsCard course={course} />
                 <AIInsightsCard course={course} />
                 <GradingWeightsCard course={course} />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-5">

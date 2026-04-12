@@ -203,6 +203,19 @@ create table if not exists weekly_course_pulse (
 create unique index if not exists idx_weekly_course_pulse_course_anchor
   on weekly_course_pulse (course_uuid, anchor_date);
 
+-- ─── Course-level Canvas config for weekly pulse enrichment ────────────────
+
+create table if not exists course_canvas_settings (
+  course_uuid uuid primary key references courses(id) on delete cascade,
+  canvas_course_id text,
+  canvas_base_url text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_course_canvas_settings_course_uuid
+  on course_canvas_settings (course_uuid);
+
 -- ─── User integration tokens (used by settings UI + backend token lookup) ──
 
 create table if not exists user_integration_tokens (
