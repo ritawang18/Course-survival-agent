@@ -7,13 +7,11 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import { useAppStore } from "@/lib/store/AppStoreProvider";
-import { weekDays, isoDay, isSameDay, shortDay, format } from "@/lib/utils/date";
+import { addDays, isoDay, isSameDay, shortDay, format } from "@/lib/utils/date";
 import { courseColorMap } from "@/components/common/CourseColor";
 import { cn } from "@/lib/utils/cn";
 import {
   Sparkles,
-  ChevronLeft,
-  ChevronRight,
   AlertTriangle,
   CalendarClock,
   Flame,
@@ -35,7 +33,7 @@ const priorityStyle = {
 export default function PlannerPage() {
   const { data, replanStudy, replanning } = useAppStore();
   const [anchor] = useState(new Date());
-  const days = useMemo(() => weekDays(anchor), [anchor]);
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(anchor, i)), [anchor]);
   const studyBlocks = data.studyBlocks;
   const [selectedDay, setSelectedDay] = useState<string>(
     isoDay(new Date()).slice(0, 10)
@@ -70,16 +68,10 @@ export default function PlannerPage() {
         description="Dynamically generated based on deadlines, difficulty, and your current progress."
         actions={
           <div className="flex items-center gap-2">
-            <div className="inline-flex items-center border border-border rounded-xl bg-surface">
-              <button className="h-9 w-9 flex items-center justify-center hover:bg-[hsl(var(--surface-2))] rounded-l-xl">
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <span className="text-xs font-medium px-3">
+            <div className="inline-flex items-center border border-border rounded-xl bg-surface px-3 h-9">
+              <span className="text-xs font-medium">
                 {format(days[0], "MMM d")} – {format(days[6], "MMM d")}
               </span>
-              <button className="h-9 w-9 flex items-center justify-center hover:bg-[hsl(var(--surface-2))] rounded-r-xl">
-                <ChevronRight className="h-4 w-4" />
-              </button>
             </div>
             <Button
               variant="primary"
@@ -207,7 +199,7 @@ export default function PlannerPage() {
             <CardHeader>
               <div>
                 <CardTitle>
-                  {format(new Date(selectedDay), "EEEE · MMM d")}
+                  {format(new Date(selectedDay + "T00:00:00"), "EEEE · MMM d")}
                 </CardTitle>
                 <p className="text-xs text-muted mt-1">
                   {dayBlocks.length} blocks scheduled

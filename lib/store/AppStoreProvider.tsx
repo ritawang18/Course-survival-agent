@@ -79,7 +79,7 @@ function buildFallbackFreeWindows(days = 7): FreeWindow[] {
     const current = new Date(anchor);
     current.setDate(anchor.getDate() + offset);
     const weekday = current.getDay();
-    const date = current.toISOString().slice(0, 10);
+    const date = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}-${String(current.getDate()).padStart(2, "0")}`;
     const weekend = weekday === 0 || weekday === 6;
 
     windows.push({
