@@ -44,6 +44,15 @@ export async function upsertSyllabus(syllabus: SyllabusParseResult): Promise<str
  * Requires the syllabus row to exist first (FK constraint).
  * Uses (user_id, course_id) as the natural key.
  * Returns the course uuid.
+ *
+ * Implementation note: this does an explicit SELECT-then-UPDATE-or-INSERT
+ * instead of supabase-js `.upsert({ onConflict: "user_id,course_id" })`.
+ * The latter goes through PostgREST's ON CONFLICT path, which validates
+ * against PostgREST's schema cache — if the unique constraint was added
+ * after PostgREST started, the cache is stale and the request errors with
+ * "no unique or exclusion constraint matching the ON CONFLICT specification"
+ * even though the constraint exists in Postgres. Doing the lookup manually
+ * sidesteps the cache entirely.
  */
 export async function upsertCourse(
   userId: string,
@@ -52,22 +61,46 @@ export async function upsertCourse(
 ): Promise<string> {
   const supabase = getServiceClient();
 
-  const { data, error } = await supabase
+  const row = {
+    user_id: userId,
+    course_id: courseId,
+    course_name: syllabus.courseName ?? courseId,
+    instructor_name: syllabus.instructor,
+    attendance_allowed_misses: syllabus.attendancePolicy?.maxAbsences ?? 0,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data: existing, error: lookupError } = await supabase
     .from("courses")
-    .upsert(
-      {
-        user_id: userId,
-        course_id: courseId,
-        course_name: syllabus.courseName ?? courseId,
-        instructor_name: syllabus.instructor,
-        attendance_allowed_misses: syllabus.attendancePolicy?.maxAbsences ?? 0,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,course_id" }
-    )
+    .select("id")
+    .eq("user_id", userId)
+    .eq("course_id", courseId)
+    .maybeSingle();
+
+  if (lookupError) {
+    throw new Error(`upsertCourse lookup failed: ${lookupError.message}`);
+  }
+
+  if (existing) {
+    const { error: updateError } = await supabase
+      .from("courses")
+      .update(row)
+      .eq("id", existing.id);
+    if (updateError) {
+      throw new Error(`upsertCourse update failed: ${updateError.message}`);
+    }
+    return existing.id as string;
+  }
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("courses")
+    .insert(row)
     .select("id")
     .single();
-
-  if (error) throw new Error(`upsertCourse failed: ${error.message}`);
-  return data.id as string;
+  if (insertError) {
+    throw new Error(
+      `upsertCourse insert failed (user_id=${userId}, course_id=${courseId}): ${insertError.message}`
+    );
+  }
+  return inserted.id as string;
 }

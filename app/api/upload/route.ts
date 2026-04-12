@@ -60,6 +60,10 @@ export async function POST(req: NextRequest) {
       }
 
       const result = await parseAssignment(rawText);
+      console.log(
+        "[upload] parseAssignment result:\n" +
+          JSON.stringify(result, null, 2)
+      );
       const assignmentId = await insertAssignment(courseId, result);
 
       return NextResponse.json({
@@ -80,6 +84,10 @@ export async function POST(req: NextRequest) {
 
     // ── Syllabus upload ─────────────────────────────────────────────────────
     const result = await parseSyllabus(rawText);
+    console.log(
+      "[upload] parseSyllabus result:\n" +
+        JSON.stringify(result, null, 2)
+    );
 
     // syllabus must be inserted first (courses.course_id FK references syllabus.course_id)
     const syllabusId = await upsertSyllabus(result);
@@ -95,6 +103,7 @@ export async function POST(req: NextRequest) {
         deadlines: result.deadlines,
         weights: result.weights,
         examDates: result.examDates,
+        cutoffs: result.cutoffs,
         attendancePolicy: result.attendancePolicy,
         courseCode: result.courseCode,
         courseName: result.courseName,

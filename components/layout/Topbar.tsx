@@ -1,12 +1,42 @@
 "use client";
 
-import { Bell, Search, Command, Plus, Menu } from "lucide-react";
+import { Bell, Search, Command, Plus, Menu, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
+import { getSupabaseClient } from "@/lib/supabase/client";
 
 export function Topbar({ onOpenSidebar }: { onOpenSidebar?: () => void }) {
   const [commandOpen, setCommandOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [email, setEmail] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    supabase.auth.getUser().then(({ data }) => {
+      setEmail(data.user?.email ?? null);
+    });
+  }, []);
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try {
+      const supabase = getSupabaseClient();
+      await supabase.auth.signOut();
+      // Belt-and-braces: also wipe any leftover sb-* localStorage keys so a
+      // stale session from a previous project can't linger.
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith("sb-"))
+        .forEach((k) => localStorage.removeItem(k));
+      // The (app) layout's onAuthStateChange listener will redirect to /login.
+    } finally {
+      setSigningOut(false);
+      setAccountOpen(false);
+    }
+  };
+
+  const initial = email?.[0]?.toUpperCase() ?? "M";
 
   return (
     <header className="sticky top-0 z-30 h-16 border-b border-border bg-bg/80 backdrop-blur flex items-center gap-3 px-5 lg:px-8">
@@ -42,8 +72,42 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar?: () => void }) {
         <span className="absolute top-2 right-2 h-1.5 w-1.5 rounded-full bg-danger" />
       </button>
 
-      <div className="h-9 w-9 rounded-full bg-gradient-to-br from-accent to-violet-500 flex items-center justify-center text-white text-xs font-semibold cursor-pointer">
-        M
+      <div className="relative">
+        <button
+          onClick={() => setAccountOpen((v) => !v)}
+          className="h-9 w-9 rounded-full bg-gradient-to-br from-accent to-violet-500 flex items-center justify-center text-white text-xs font-semibold cursor-pointer"
+          aria-label="Account menu"
+        >
+          {initial}
+        </button>
+
+        {accountOpen && (
+          <>
+            {/* click-outside backdrop */}
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setAccountOpen(false)}
+            />
+            <div className="absolute right-0 top-11 z-50 w-60 rounded-xl border border-border bg-surface shadow-card-hover overflow-hidden">
+              <div className="px-3 py-3 border-b border-border/60">
+                <div className="text-[10px] uppercase tracking-wider text-muted font-medium">
+                  Signed in as
+                </div>
+                <div className="text-sm font-medium truncate mt-0.5">
+                  {email ?? "Loading…"}
+                </div>
+              </div>
+              <button
+                onClick={handleSignOut}
+                disabled={signingOut}
+                className="w-full text-left px-3 py-2.5 text-sm text-text/90 hover:bg-[hsl(var(--surface-2))] flex items-center gap-2 disabled:opacity-50"
+              >
+                <LogOut className="h-4 w-4" />
+                {signingOut ? "Signing out…" : "Sign out"}
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       <Modal
