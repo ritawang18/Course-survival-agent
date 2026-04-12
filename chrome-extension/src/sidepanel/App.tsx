@@ -83,6 +83,13 @@ function riskTitle(signals: SignalProfile) {
   return "Risk snapshot";
 }
 
+function formatPulseTimestamp(value?: string | null) {
+  if (!value) return "Saved in Web UI";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Saved in Web UI";
+  return parsed.toLocaleString();
+}
+
 function signalLabel(kind: WidgetKind, summary: ContextSummaryResponse, signals: SignalProfile) {
   if (kind === "grade_snapshot") {
     return "Detected from the Canvas grade page";
@@ -360,6 +367,15 @@ export function App() {
     return "Canvas Companion";
   }, [state?.context?.pageTitle, summary?.context.pageTitle]);
 
+  const matchedCourseLabel = useMemo(() => {
+    if (!summary?.courseMatch) return "No matched Web UI course yet";
+    return (
+      summary.courseMatch.courseCode ??
+      summary.courseMatch.courseName ??
+      "Matched course record"
+    );
+  }, [summary?.courseMatch]);
+
   async function loadState(refresh = false) {
     setLoading(true);
     setError(null);
@@ -466,12 +482,62 @@ export function App() {
         </div>
       </header>
 
-      {!state?.hasToken && (
+      <section className="card status-card">
+        <div className="status-grid">
+          <div className="status-item">
+            <div className="status-label">Web UI login</div>
+            <div className={`status-value ${state?.isAuthenticated ? "is-ok" : "is-missing"}`}>
+              {state?.isAuthenticated ? "Connected" : "Sign in required"}
+            </div>
+          </div>
+          <div className="status-item">
+            <div className="status-label">Server Canvas PAT</div>
+            <div className={`status-value ${state?.hasCanvasToken ? "is-ok" : "is-missing"}`}>
+              {state?.hasCanvasToken ? "Configured" : "Not configured"}
+            </div>
+          </div>
+          <div className="status-item status-item-wide">
+            <div className="status-label">Matched Web UI course</div>
+            <div className={`status-value ${summary?.courseMatch ? "is-ok" : "is-missing"}`}>
+              {matchedCourseLabel}
+            </div>
+            {summary?.courseMatch && (
+              <div className="status-meta">
+                Match source:{" "}
+                {summary.courseMatch.matchSource === "canvas_mapping"
+                  ? "course_canvas_settings"
+                  : "text fallback"}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {!state?.isAuthenticated && (
+        <section className="card warning-card">
+          <strong>Sign in required</strong>
+          <p>
+            This extension now uses your Web UI login and server-side tokens. Sign in through the
+            web app first, then return to Canvas.
+          </p>
+          <div className="actions">
+            <button className="button primary" onClick={() => sendMessage({ type: "OPEN_WEB_APP_LOGIN" })}>
+              Open Web UI login
+            </button>
+            <button className="button secondary" onClick={() => sendMessage({ type: "OPEN_OPTIONS" })}>
+              Debug settings
+            </button>
+          </div>
+        </section>
+      )}
+
+      {state?.isAuthenticated && !state?.hasCanvasToken && (
         <section className="card warning-card">
           <strong>Prototype mode</strong>
           <p>
-            Add a Canvas token for richer context. The extension still works in DOM-only mode,
-            but dashboard deadlines and assignment details become more stable with a token.
+            Add a Canvas token in the Web UI for richer server-side Canvas enrichment. Without it,
+            the extension can still use database context and DOM context, but Canvas-backed detail
+            will be weaker.
           </p>
         </section>
       )}
@@ -489,7 +555,7 @@ export function App() {
         </section>
       )}
 
-      {!loading && !summary && (
+      {!loading && !summary && state?.isAuthenticated && (
         <section className="card">
           <strong>Waiting for Canvas page context</strong>
           <p>
@@ -502,7 +568,7 @@ export function App() {
               Refresh analysis
             </button>
             <button className="button secondary" onClick={() => sendMessage({ type: "OPEN_OPTIONS" })}>
-              Settings
+              Debug settings
             </button>
           </div>
         </section>
@@ -574,18 +640,18 @@ export function App() {
                 Open full web app
               </button>
               <button className="button secondary" onClick={() => sendMessage({ type: "OPEN_OPTIONS" })}>
-                Extension settings
+                Debug settings
               </button>
             </div>
             {tokenPageFallback ? (
               <p className="single-hint">
-                The Web UI token page URL is not configured yet, so the button opened extension settings for now.
-              </p>
-            ) : (
-              <p className="single-hint">
-                Widgets below are chosen by page signals, not only by URL type.
-              </p>
-            )}
+              The Web UI token page URL is not configured yet, so the button opened debug settings for now.
+            </p>
+          ) : (
+            <p className="single-hint">
+                Login and PAT live in the Web UI. Widgets below are chosen by page signals, not only by URL type.
+            </p>
+          )}
           </section>
 
           <section className="card">
@@ -606,6 +672,23 @@ export function App() {
           </section>
 
           {widgetPlan.map((item) => renderWidget(item.kind, summary, signals))}
+
+          {summary.context.pageType === "course_home" && summary.weeklyPulse && (
+            <section className="card">
+              <CardHeader title="Weekly pulse" source="database" />
+              <p className="single-hint">
+                Pulled from the Web UI weekly course pulse cache · {formatPulseTimestamp(summary.weeklyPulse.generatedAt)}
+              </p>
+              <div className="pulse-block">
+                <div className="pulse-label">Last week</div>
+                <p>{summary.weeklyPulse.pastWeekLearned}</p>
+              </div>
+              <div className="pulse-block">
+                <div className="pulse-label">Next week</div>
+                <p>{summary.weeklyPulse.nextWeekPreview}</p>
+              </div>
+            </section>
+          )}
 
           {debugMode && (
             <>

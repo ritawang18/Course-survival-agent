@@ -17,6 +17,7 @@ import type {
   StudyBlock,
   UploadArtifact,
 } from "./types";
+import { dispatchWebUiAuthToken } from "@/lib/extension/web-auth-bridge";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { buildCalendarExportEvents } from "@/lib/calendar/export-events";
 import type { FreeWindow, SchedulerInput } from "@/lib/scheduler";
@@ -235,6 +236,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       try {
         const { data: sessionData } = await supabase.auth.getSession();
         const token = sessionData.session?.access_token;
+        dispatchWebUiAuthToken(token ?? null);
         if (!token) {
           if (!cancelled) setData(emptyData);
           return;
@@ -279,7 +281,8 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
 
     load();
 
-    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      dispatchWebUiAuthToken(session?.access_token ?? null);
       load();
     });
 

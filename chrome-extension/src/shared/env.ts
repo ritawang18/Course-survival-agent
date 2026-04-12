@@ -10,11 +10,8 @@ export function resolveWebAppBaseUrl(settings?: Partial<ExtensionSettings>) {
 }
 
 export function resolveWebAppTokenUrl(settings?: Partial<ExtensionSettings>) {
-  const explicit = settings?.webAppTokenUrl?.trim();
-  if (explicit) return explicit;
-
   const baseUrl = resolveWebAppBaseUrl(settings).trim();
-  if (!baseUrl) return DEFAULT_SETTINGS.webAppTokenUrl;
+  if (!baseUrl) return new URL("/settings", DEFAULT_SETTINGS.webAppBaseUrl).toString();
 
   try {
     const parsed = new URL(baseUrl);
@@ -23,6 +20,6 @@ export function resolveWebAppTokenUrl(settings?: Partial<ExtensionSettings>) {
     parsed.hash = "";
     return parsed.toString();
   } catch {
-    return DEFAULT_SETTINGS.webAppTokenUrl;
+    return new URL("/settings", DEFAULT_SETTINGS.webAppBaseUrl).toString();
   }
 }
