@@ -13,20 +13,24 @@ interface Props {
 }
 
 interface FormState {
+  course_id: string;
   course_name: string;
   term: string;
   instructor_name: string;
   current_grade_percent: string;
   attendance_missed_count: string;
+  attendance_allowed_misses: string;
   credits: string;
 }
 
 const empty: FormState = {
+  course_id: "",
   course_name: "",
   term: "",
   instructor_name: "",
   current_grade_percent: "",
   attendance_missed_count: "",
+  attendance_allowed_misses: "",
   credits: "",
 };
 
@@ -61,6 +65,7 @@ export function AddCourseModal({ open, onClose, onCreated }: Props) {
       const body: Record<string, string | number> = {
         course_name: form.course_name.trim(),
       };
+      if (form.course_id.trim())           body.course_id = form.course_id.trim();
       if (form.term.trim())                body.term = form.term.trim();
       if (form.instructor_name.trim())     body.instructor_name = form.instructor_name.trim();
       if (form.current_grade_percent !== "") {
@@ -72,6 +77,11 @@ export function AddCourseModal({ open, onClose, onCreated }: Props) {
         const v = parseInt(form.attendance_missed_count, 10);
         if (isNaN(v) || v < 0) { setError("Attendance missed count must be 0 or more."); setLoading(false); return; }
         body.attendance_missed_count = v;
+      }
+      if (form.attendance_allowed_misses !== "") {
+        const v = parseInt(form.attendance_allowed_misses, 10);
+        if (isNaN(v) || v < 0) { setError("Allowed absences must be 0 or more."); setLoading(false); return; }
+        body.attendance_allowed_misses = v;
       }
       if (form.credits !== "") {
         const v = parseInt(form.credits, 10);
@@ -121,6 +131,19 @@ export function AddCourseModal({ open, onClose, onCreated }: Props) {
             value={form.course_name}
             onChange={set("course_name")}
             autoFocus
+          />
+        </div>
+
+        {/* Course ID */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted uppercase tracking-wide">
+            Course ID
+            <span className="ml-1 text-muted/60 normal-case font-normal">(e.g. CS 344)</span>
+          </label>
+          <Input
+            placeholder="e.g. CS 344"
+            value={form.course_id}
+            onChange={set("course_id")}
           />
         </div>
 
@@ -179,19 +202,34 @@ export function AddCourseModal({ open, onClose, onCreated }: Props) {
           </div>
         </div>
 
-        {/* Attendance missed */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted uppercase tracking-wide">
-            Classes missed so far
-          </label>
-          <Input
-            type="number"
-            min={0}
-            step={1}
-            placeholder="e.g. 2"
-            value={form.attendance_missed_count}
-            onChange={set("attendance_missed_count")}
-          />
+        {/* Attendance missed + allowed — side by side */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted uppercase tracking-wide">
+              Classes missed so far
+            </label>
+            <Input
+              type="number"
+              min={0}
+              step={1}
+              placeholder="e.g. 2"
+              value={form.attendance_missed_count}
+              onChange={set("attendance_missed_count")}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted uppercase tracking-wide">
+              Allowed absences
+            </label>
+            <Input
+              type="number"
+              min={0}
+              step={1}
+              placeholder="e.g. 5"
+              value={form.attendance_allowed_misses}
+              onChange={set("attendance_allowed_misses")}
+            />
+          </div>
         </div>
 
         {/* Error */}

@@ -26,18 +26,22 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const {
+      course_id: courseIdInput,
       course_name,
       term,
       instructor_name,
       current_grade_percent,
       attendance_missed_count,
+      attendance_allowed_misses,
       credits,
     } = body as {
+      course_id?: string;
       course_name: string;
       term?: string;
       instructor_name?: string;
       current_grade_percent?: number;
       attendance_missed_count?: number;
+      attendance_allowed_misses?: number;
       credits?: number;
     };
 
@@ -47,10 +51,11 @@ export async function POST(req: NextRequest) {
 
     const supabase = getServiceClient();
 
-    // Use course_name as the syllabus PK (text course_id).
-    // Append a short timestamp suffix to avoid collisions across users
-    // creating courses with the same name.
-    const courseTextId = `${course_name.trim()}_${Date.now()}`;
+    // Use the user-provided course_id if given, otherwise derive from course_name.
+    // Append a timestamp suffix to avoid collisions when no explicit id is provided.
+    const courseTextId = courseIdInput?.trim()
+      ? courseIdInput.trim()
+      : `${course_name.trim()}_${Date.now()}`;
 
     // syllabus row must exist before courses row (FK constraint)
     const { error: syllabusErr } = await supabase
@@ -82,7 +87,7 @@ export async function POST(req: NextRequest) {
         instructor_name: instructor_name?.trim() || null,
         current_grade_percent: current_grade_percent ?? null,
         attendance_missed_count: attendance_missed_count ?? 0,
-        attendance_allowed_misses: 0,
+        attendance_allowed_misses: attendance_allowed_misses ?? 0,
         credits: credits ?? null,
       })
       .select("id")
