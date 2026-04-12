@@ -161,16 +161,19 @@ async function runCase(c: (typeof CASES)[number]) {
     console.log(compiledCode);
   }
 
+  // Fetch grading_code back from DB — simulates what grades/calculate does at runtime
   const fetched = await getCompiledGradeCode(c.id);
   if (!fetched) throw new Error("grading_code not persisted in syllabus table!");
   if (fetched !== compiledCode) throw new Error("grading_code in DB does not match compiled output!");
+  console.log("  ✓ grading_code persisted and verified in DB");
 
   console.log("  Ground truth:");
   for (const line of c.groundTruth) {
     console.log(`    ${line}`);
   }
 
-  const output = runGradeCode(compiledCode, c.categories, 75);
+  // Use fetched (from DB) instead of compiledCode (in-memory) to test the full path
+  const output = runGradeCode(fetched, c.categories, 75);
   console.log("  → Actual output:");
   printOutput(output);
 
