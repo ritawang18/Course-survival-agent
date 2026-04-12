@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { PDFParse } from "pdf-parse";
 import { parseSyllabus } from "@/lib/parsers/syllabus";
 import { parseAssignment } from "@/lib/parsers/assignment";
-import { getUserFromRequest } from "@/lib/supabase/server";
+import { getUserFromRequest, getServiceClient } from "@/lib/supabase/server";
 import { upsertSyllabus, upsertCourse } from "@/lib/db/courses";
 import { insertSyllabusAssignments, insertAssignment } from "@/lib/db/assignments";
+import { compileAndStoreGradePolicy } from "@/lib/skills/grade-policy-compiler";
 
 export const runtime = "nodejs"; // pdf-parse requires Node.js runtime
 
@@ -85,6 +86,24 @@ export async function POST(req: NextRequest) {
     const syllabusId = await upsertSyllabus(result);
     const newCourseId = await upsertCourse(user.id, syllabusId, result);
     const assignmentsCreated = await insertSyllabusAssignments(newCourseId, result);
+
+    // Compile grading policy into executable code and cache it in syllabus.grading_code.
+    // grading_policy is populated by the partner's parser; skip silently if absent.
+    try {
+      const supabase = getServiceClient();
+      const { data: syllabusRow } = await supabase
+        .from("syllabus")
+        .select("grading_policy")
+        .eq("course_id", syllabusId)
+        .single();
+
+      if (syllabusRow?.grading_policy) {
+        await compileAndStoreGradePolicy(syllabusId, syllabusRow.grading_policy);
+      }
+    } catch (compileErr) {
+      // Non-fatal: grade calculation falls back to default policy if compilation fails
+      console.warn("[upload] grade policy compilation skipped:", compileErr);
+    }
 
     return NextResponse.json({
       kind,
