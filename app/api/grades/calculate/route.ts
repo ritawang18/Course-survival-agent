@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromRequest } from "@/lib/supabase/server";
 import { upsertCourseGrade } from "@/lib/db/grades";
+import { getCompiledGradeCode } from "@/lib/skills/grade-policy-compiler";
+import { runGradeCode } from "@/lib/skills/grade-runner";
+import { categoryFromAggregated } from "@/lib/skills/grade-template";
 
 interface GradeCutoff {
   grade: string;       // "A", "A-", "B+", etc.
@@ -15,7 +18,8 @@ interface GradingCategory {
 }
 
 interface CourseInput {
-  courseId: string;    // DB uuid — used to persist to course_grades
+  courseId: string;       // DB uuid — used to persist to course_grades
+  textCourseId?: string;  // syllabus.course_id text key (e.g. "CS344") — for compiled policy lookup
   credits: number;
   gradingWeights: GradingCategory[];
   cutoffs?: GradeCutoff[];  // from syllabus.cut_off — uses defaults if omitted
@@ -76,8 +80,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "courses array is required" }, { status: 400 });
     }
 
-    const courseResults: CourseResult[] = courses.map((c) =>
-      calculateCourse(c, optimisticScore)
+    const courseResults: CourseResult[] = await Promise.all(
+      courses.map((c) => calculateCourse(c, optimisticScore))
     );
 
     // ── Persist to course_grades ──────────────────────────────────────────────
@@ -120,7 +124,45 @@ export async function POST(req: NextRequest) {
 
 // ── Calculation logic ─────────────────────────────────────────────────────────
 
-function calculateCourse(c: CourseInput, optimisticScore: number): CourseResult {
+async function calculateCourse(c: CourseInput, optimisticScore: number): Promise<CourseResult> {
+  // Try compiled grade policy first (from syllabus.grading_code via vm runner)
+  if (c.textCourseId) {
+    try {
+      const compiledCode = await getCompiledGradeCode(c.textCourseId);
+      if (compiledCode) {
+        const templateCategories = c.gradingWeights.map((g) =>
+          categoryFromAggregated(g.id, g.name, g.weight, g.earned)
+        );
+        const output = runGradeCode(compiledCode, templateCategories, optimisticScore);
+        const ungradedWeight = output.categories
+          .filter((cat) => cat.processedAverage === null)
+          .reduce((s, cat) => s + cat.weight, 0);
+        const projectedGrade = round(output.projectedGrade);
+        return {
+          courseId: c.courseId,
+          credits: c.credits,
+          currentGrade: output.currentGrade !== null ? round(output.currentGrade) : null,
+          projectedGrade,
+          worstCaseGrade: round(output.worstCaseGrade),
+          letterGrade: toLetter(projectedGrade, c.cutoffs),
+          gpaPoints: toGPA(projectedGrade, c.cutoffs),
+          categories: output.categories.map((cat) => ({
+            id: cat.id,
+            name: cat.name,
+            weight: cat.weight,
+            earned: cat.processedAverage,
+            contribution: cat.contribution,
+          })),
+          ungradedWeight,
+        };
+      }
+    } catch (err) {
+      // Fall through to default calculation if compiled runner fails
+      console.warn("[grades/calculate] compiled runner failed, using fallback:", err);
+    }
+  }
+
+  // Default calculation (no compiled policy)
   const categories: CategoryResult[] = c.gradingWeights.map((g) => ({
     id: g.id,
     name: g.name,
