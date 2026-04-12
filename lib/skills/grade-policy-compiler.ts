@@ -29,13 +29,22 @@ SLOT DESCRIPTIONS AND AVAILABLE VARIABLES:
    - pointsPossible: number[] — mutable array of max points per score (modify alongside scores)
    - categoryName: string     — name of the grading category (e.g. "Quizzes")
    - categoryWeight: number   — percent weight of this category (0–100)
-   Use for: drop lowest N scores, keep best N of M, etc.
+   Use for: drop lowest N scores, keep best N of M, dynamic per-score weighting, etc.
    Example for "drop lowest quiz score":
      if (/quiz/i.test(categoryName) && scores.length > 1) {
        var minIdx = scores.indexOf(Math.min.apply(null, scores));
        scores.splice(minIdx, 1);
        pointsPossible.splice(minIdx, 1);
      }
+   Example for "two exams: higher score counts 20%, lower counts 10% of final grade":
+     (Use PREPROCESS — NOT ADJUST — because we must re-weight individual scores before averaging.)
+     if (/exam/i.test(categoryName) && scores.length === 2) {
+       var pairs = [{s: scores[0], pp: pointsPossible[0]}, {s: scores[1], pp: pointsPossible[1]}];
+       pairs.sort(function(a, b) { return b.s - a.s; });
+       scores[0] = pairs[0].s * 2; pointsPossible[0] = pairs[0].pp * 2;
+       scores[1] = pairs[1].s * 1; pointsPossible[1] = pairs[1].pp * 1;
+     }
+     (This scales pointsPossible 2:1 so the weighted average = (higher×2 + lower×1)/(pp×2 + pp×1).)
 
 2. ADJUST (runs per-category, after computing categoryAverage)
    Available variables:
@@ -66,6 +75,8 @@ RULES:
 - Variable names must exactly match those listed above
 - If a policy does not require a slot, set it to null
 - If the policy is ambiguous, write a conservative implementation with a comment
+- CRITICAL: In the JSON output, all newlines inside string values MUST be escaped as \n — never emit literal newlines inside a JSON string value
+- Dynamic per-score weighting (e.g. higher exam counts more) MUST go in PREPROCESS by scaling scores[] and pointsPossible[] — ADJUST only has a single categoryAverage number and cannot re-weight individual scores
 
 OUTPUT FORMAT (return only this JSON, no prose, no markdown fences):
 {
@@ -123,7 +134,7 @@ async function callGemini(
     model: google("gemini-2.5-flash"),
     system: SYSTEM_PROMPT,
     prompt: `Grading policy from syllabus:\n\n${gradingPolicy}`,
-    maxOutputTokens: 1024,
+    maxOutputTokens: 2048,
     temperature: 0.1,   // low temperature for deterministic code generation
   });
 
@@ -138,9 +149,17 @@ function parseGeminiResponse(raw: string): Partial<Record<SlotName, string>> {
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    console.error("[grade-policy-compiler] Gemini returned invalid JSON:", raw);
-    // Fall back to all defaults — calculation still works, just without policies
-    return {};
+    // Gemini sometimes emits literal newlines inside JSON string values instead of \n.
+    // Repair by finding each JSON string and escaping any bare newlines within it.
+    try {
+      const repaired = cleaned.replace(/"((?:[^"\\]|\\[\s\S])*)"/gs, (_, content: string) =>
+        '"' + content.replace(/\r?\n/g, "\\n").replace(/\t/g, "\\t") + '"'
+      );
+      parsed = JSON.parse(repaired);
+    } catch {
+      console.error("[grade-policy-compiler] Gemini returned invalid JSON:", raw);
+      return {};
+    }
   }
 
   const slots: Partial<Record<SlotName, string>> = {};

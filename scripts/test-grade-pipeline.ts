@@ -162,7 +162,8 @@ async function runCase(c: (typeof CASES)[number]) {
   }
 
   const fetched = await getCompiledGradeCode(c.id);
-  if (!fetched) throw new Error("grading_code not persisted!");
+  if (!fetched) throw new Error("grading_code not persisted in syllabus table!");
+  if (fetched !== compiledCode) throw new Error("grading_code in DB does not match compiled output!");
 
   console.log("  Ground truth:");
   for (const line of c.groundTruth) {
