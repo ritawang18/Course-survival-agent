@@ -940,11 +940,12 @@ export async function GET(req: NextRequest) {
         credits: row.credits ?? 0,
         schedule: row.schedule ?? "",
         current_grade_percent: currentGradePercent,
+        attendance_attended_count: (row as unknown as Record<string, unknown>)["attendance_attended_count"] as number ?? 0,
         attendance_missed_count: row.attendance_missed_count ?? 0,
         attendance_allowed_misses: attendanceAllowed,
         attendancePolicy: {
           attendance_allowed_misses: attendanceAllowed,
-          penaltyPerAbsence: 0,
+          penaltyPerAbsence: (row as unknown as Record<string, unknown>)["attendance_penalty"] as number ?? 0,
           note:
             attendanceAllowed > 0
               ? `Allowed absences: ${attendanceAllowed}`

@@ -63,7 +63,7 @@ export async function upsertCourse(
 ): Promise<string> {
   const supabase = getServiceClient();
 
-  const row = {
+  const baseRow = {
     user_id: userId,
     course_id: courseId,
     course_name: syllabus.courseName ?? courseId,
@@ -71,6 +71,10 @@ export async function upsertCourse(
     attendance_allowed_misses: syllabus.attendancePolicy?.maxAbsences ?? 0,
     updated_at: new Date().toISOString(),
   };
+
+  // attendance_penalty column may not exist yet — try with it, fall back without
+  const penalty = syllabus.attendancePolicy?.penaltyPerAbsence ?? 0;
+  let row: Record<string, unknown> = { ...baseRow, attendance_penalty: penalty };
 
   const { data: existing, error: lookupError } = await supabase
     .from("courses")
@@ -84,25 +88,42 @@ export async function upsertCourse(
   }
 
   if (existing) {
-    const { error: updateError } = await supabase
+    let { error: updateError } = await supabase
       .from("courses")
       .update(row)
       .eq("id", existing.id);
+    if (updateError?.message?.includes("attendance_penalty")) {
+      console.warn("[upsertCourse] attendance_penalty column not found, retrying without it");
+      row = baseRow;
+      ({ error: updateError } = await supabase
+        .from("courses")
+        .update(row)
+        .eq("id", existing.id));
+    }
     if (updateError) {
       throw new Error(`upsertCourse update failed: ${updateError.message}`);
     }
     return existing.id as string;
   }
 
-  const { data: inserted, error: insertError } = await supabase
+  let { data: inserted, error: insertError } = await supabase
     .from("courses")
     .insert(row)
     .select("id")
     .single();
+  if (insertError?.message?.includes("attendance_penalty")) {
+    console.warn("[upsertCourse] attendance_penalty column not found, retrying without it");
+    row = baseRow;
+    ({ data: inserted, error: insertError } = await supabase
+      .from("courses")
+      .insert(row)
+      .select("id")
+      .single());
+  }
   if (insertError) {
     throw new Error(
       `upsertCourse insert failed (user_id=${userId}, course_id=${courseId}): ${insertError.message}`
     );
   }
-  return inserted.id as string;
+  return inserted!.id as string;
 }

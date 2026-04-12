@@ -32,7 +32,7 @@ const navItems = [
 export function Sidebar({ className }: { className?: string }) {
   const pathname = usePathname();
   const { data } = useAppStore();
-  const activeAssignments = data.assignments.filter((item) => item.status !== "done").length;
+  const activeAssignments = (data.assignments ?? []).filter((item) => item.status !== "done").length;
 
   return (
     <aside
@@ -94,7 +94,7 @@ export function Sidebar({ className }: { className?: string }) {
           <div className="flex-1 min-w-0">
             <div className="text-xs font-medium truncate">Course Survival Agent</div>
             <div className="text-[11px] text-muted truncate">
-              {data.courses.length} courses · {activeAssignments} active tasks
+              {(data.courses ?? []).length} courses · {activeAssignments} active tasks
             </div>
           </div>
         </div>

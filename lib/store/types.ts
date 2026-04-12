@@ -58,6 +58,7 @@ export interface Course {
   schedule: string;
   location?: string;
   current_grade_percent?: number;
+  attendance_attended_count: number;
   attendance_missed_count: number;
   attendance_allowed_misses: number;
   attendancePolicy?: AttendancePolicy;

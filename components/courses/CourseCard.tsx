@@ -20,8 +20,9 @@ export function CourseCard({ course }: { course: Course }) {
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
 
   const colors = courseColorMap[course.color];
-  const over = course.attendance_missed_count >= course.attendance_allowed_misses;
-  const near =
+  const hasPolicy = course.attendance_allowed_misses > 0;
+  const over = hasPolicy && course.attendance_missed_count >= course.attendance_allowed_misses;
+  const near = hasPolicy &&
     course.attendance_missed_count >= course.attendance_allowed_misses - 1 && !over;
 
   return (
@@ -87,18 +88,26 @@ export function CourseCard({ course }: { course: Course }) {
         </div>
 
         <div className="flex items-center gap-2 mt-4">
-          <Badge
-            variant={over ? "danger" : near ? "warning" : "muted"}
-            className="font-mono"
-          >
-            {course.attendance_missed_count}/{course.attendance_allowed_misses} absences
-          </Badge>
-          {near && (
-            <Badge variant="warning">
-              <AlertTriangle className="h-3 w-3" />
-              Near threshold
+          {course.attendance_allowed_misses > 0 ? (
+            <>
+              <Badge
+                variant={over ? "danger" : near ? "warning" : "muted"}
+                className="font-mono"
+              >
+                {course.attendance_missed_count}/{course.attendance_allowed_misses} absences
+              </Badge>
+              {near && (
+                <Badge variant="warning">
+                  <AlertTriangle className="h-3 w-3" />
+                  Near threshold
+                </Badge>
+              )}
+            </>
+          ) : course.attendance_missed_count > 0 ? (
+            <Badge variant="muted" className="font-mono">
+              {course.attendance_missed_count} missed
             </Badge>
-          )}
+          ) : null}
           <div className="flex-1" />
           <ArrowUpRight className="h-4 w-4 text-muted group-hover:text-accent group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-all" />
         </div>

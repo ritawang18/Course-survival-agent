@@ -134,7 +134,9 @@ interface AppStoreValue {
   loading: boolean;
   refreshData: () => Promise<void>;
   // actions
-  markAttendance: (courseId: string, attended: boolean) => void;
+  markAttendance: (courseId: string, attended: boolean) => Promise<void>;
+  decrementAttendance: (courseId: string) => Promise<void>;
+  undoAttendance: (courseId: string, lastAction: "attended" | "missed") => Promise<void>;
   setAssignmentStatus: (id: string, status: AssignmentStatus) => void;
   updateGradeScore: (
     courseId: string,
@@ -218,7 +220,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     }
 
     const payload = await loadAppData(token);
-    setData((prev) => ({ ...payload, uploads: prev.uploads }));
+    setData((prev) => ({ ...emptyData, ...payload, uploads: prev.uploads }));
   }, [loadAppData]);
 
   // ── Hydrate from Supabase on mount ───────────────────────────────────────
@@ -260,7 +262,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         const payload = (await res.json()) as AppData;
-        if (!cancelled) setData((prev) => ({ ...payload, uploads: prev.uploads }));
+        if (!cancelled) setData((prev) => ({ ...emptyData, ...payload, uploads: prev.uploads }));
       } catch (err) {
         if (!cancelled) {
           console.error("[store] hydrate failed", err);
@@ -288,13 +290,15 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   }, [pushToast]);
 
   const markAttendance = useCallback(
-    (courseId: string, attended: boolean) => {
+    async (courseId: string, attended: boolean) => {
+      // Optimistic local update
       setData((prev) => ({
         ...prev,
         courses: prev.courses.map((c) =>
           c.id === courseId
             ? {
                 ...c,
+                attendance_attended_count: c.attendance_attended_count + (attended ? 1 : 0),
                 attendance_missed_count: Math.max(
                   0,
                   c.attendance_missed_count + (attended ? 0 : 1)
@@ -311,6 +315,118 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
           ? `${course.code ?? course.course_id ?? ""} · ${attended ? "Marked present" : "One more absence counted"}`
           : undefined,
       });
+
+      // Persist to database
+      try {
+        const supabase = getSupabaseClient();
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) return;
+
+        const res = await fetch("/api/attendance", {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ courseId, attended }),
+        });
+        if (!res.ok) {
+          console.error("[attendance] persist failed:", await res.text());
+        }
+      } catch (err) {
+        console.error("[attendance] persist failed:", err);
+      }
+    },
+    [data.courses, pushToast]
+  );
+
+  const decrementAttendance = useCallback(
+    async (courseId: string) => {
+      const course = data.courses.find((c) => c.id === courseId);
+      if (!course || course.attendance_missed_count <= 0) return;
+
+      setData((prev) => ({
+        ...prev,
+        courses: prev.courses.map((c) =>
+          c.id === courseId
+            ? { ...c, attendance_missed_count: c.attendance_missed_count - 1 }
+            : c
+        ),
+      }));
+      pushToast({
+        kind: "info",
+        title: "Absence undone",
+        description: `${course.code ?? course.course_id ?? ""} · One absence removed`,
+      });
+
+      try {
+        const supabase = getSupabaseClient();
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) return;
+
+        const res = await fetch("/api/attendance", {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ courseId, action: "decrement" }),
+        });
+        if (!res.ok) {
+          console.error("[attendance] decrement persist failed:", await res.text());
+        }
+      } catch (err) {
+        console.error("[attendance] decrement persist failed:", err);
+      }
+    },
+    [data.courses, pushToast]
+  );
+
+  const undoAttendance = useCallback(
+    async (courseId: string, lastAction: "attended" | "missed") => {
+      const course = data.courses.find((c) => c.id === courseId);
+      if (!course) return;
+
+      // Optimistic update
+      setData((prev) => ({
+        ...prev,
+        courses: prev.courses.map((c) =>
+          c.id === courseId
+            ? lastAction === "attended"
+              ? { ...c, attendance_attended_count: Math.max(0, c.attendance_attended_count - 1) }
+              : { ...c, attendance_missed_count: Math.max(0, c.attendance_missed_count - 1) }
+            : c
+        ),
+      }));
+      pushToast({
+        kind: "info",
+        title: lastAction === "attended" ? "Attendance undone" : "Absence undone",
+        description: `${course.code ?? course.course_id ?? ""} · Last action reversed`,
+      });
+
+      try {
+        const supabase = getSupabaseClient();
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) return;
+
+        const action = lastAction === "attended" ? "undo_attended" : "decrement";
+        const res = await fetch("/api/attendance", {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ courseId, action }),
+        });
+        if (!res.ok) {
+          console.error("[attendance] undo persist failed:", await res.text());
+        }
+      } catch (err) {
+        console.error("[attendance] undo persist failed:", err);
+      }
     },
     [data.courses, pushToast]
   );
@@ -840,6 +956,8 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       loading,
       refreshData,
       markAttendance,
+      decrementAttendance,
+      undoAttendance,
       setAssignmentStatus,
       updateGradeScore,
       replanStudy,
@@ -863,6 +981,8 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       loading,
       refreshData,
       markAttendance,
+      decrementAttendance,
+      undoAttendance,
       setAssignmentStatus,
       updateGradeScore,
       replanStudy,
