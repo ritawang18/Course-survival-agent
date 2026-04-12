@@ -104,13 +104,19 @@ async function callModel(
 }
 
 function parseModelResponse(raw: string): Partial<Record<SlotName, string>> {
-  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  // Try stripping markdown fences first, then fall back to extracting the JSON object directly
+  let cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+  }
 
   let parsed: Record<string, string | null>;
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    console.error("[grade-policy-compiler] Gemini returned invalid JSON:", raw);
+    console.error("[grade-policy-compiler] LLM returned invalid JSON:", raw);
     // Fall back to all defaults — calculation still works, just without policies
     return {};
   }

@@ -121,14 +121,20 @@ export interface UploadArtifact {
   id: string;
   fileName: string;
   kind: "syllabus" | "notes" | "assignment";
-  status: "parsing" | "parsed" | "needs_review";
+  status: "parsing" | "parsed" | "needs_review" | "confirmed";
   uploadedAt: string;
+  courseId?: string;
   extracted: {
     deadlines: { label: string; date: string; confidence: number }[];
     weights: { name: string; percent: number; confidence: number }[];
     examDates: { label: string; date: string; confidence: number }[];
     cutoffs: { grade: string; minPercent: number; confidence: number }[];
     attendancePolicy: { text: string; confidence: number };
+    courseCode?: string | null;
+    courseName?: string | null;
+    instructor?: string | null;
+    gradingPolicy?: string | null;
+    assignment?: Record<string, unknown>;
   };
 }
 

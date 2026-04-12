@@ -14,14 +14,17 @@ interface UploadResponse {
   kind: UploadKind;
   fileName: string;
   courseId?: string;
-  assignmentsCreated?: number;
-  assignmentId?: string;
   extracted: {
     deadlines?: { label: string; date: string; confidence: number }[];
     weights?: { name: string; percent: number; confidence: number }[];
     examDates?: { label: string; date: string; confidence: number }[];
     cutoffs?: { grade: string; minPercent: number; confidence: number }[];
     attendancePolicy?: { text: string; confidence: number };
+    courseCode?: string | null;
+    courseName?: string | null;
+    instructor?: string | null;
+    gradingPolicy?: string | null;
+    assignment?: Record<string, unknown>;
   };
 }
 
@@ -90,6 +93,7 @@ export function UploadZone() {
     kind: payload.kind === "assignment" ? "assignment" : "syllabus",
     status: "parsed",
     uploadedAt: new Date().toISOString(),
+    courseId: payload.courseId,
     extracted: {
       deadlines: payload.extracted.deadlines ?? [],
       weights: payload.extracted.weights ?? [],
@@ -99,6 +103,11 @@ export function UploadZone() {
         text: "",
         confidence: 0,
       },
+      courseCode: payload.extracted.courseCode,
+      courseName: payload.extracted.courseName,
+      instructor: payload.extracted.instructor,
+      gradingPolicy: payload.extracted.gradingPolicy,
+      assignment: payload.extracted.assignment,
     },
   });
 

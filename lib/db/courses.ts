@@ -31,6 +31,7 @@ export async function upsertSyllabus(syllabus: SyllabusParseResult): Promise<str
         exam_dates: examDates,
         project_date: projectDates,
         cut_off: syllabus.cutoffs,
+        grading_policy: syllabus.gradingPolicy ?? null,
       },
       { onConflict: "course_id" }
     );

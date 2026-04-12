@@ -143,6 +143,7 @@ interface AppStoreValue {
   ) => void;
   replanStudy: () => Promise<void>;
   addUpload: (artifact: UploadArtifact) => void;
+  updateUpload: (id: string, patch: Partial<UploadArtifact>) => void;
   syncGoogleCalendar: () => Promise<void>;
   refreshWeeklyCoursePulse: (courseId: string) => Promise<void>;
   fetchProfessorInsight: (courseId: string) => Promise<void>;
@@ -213,7 +214,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     }
 
     const payload = await loadAppData(token);
-    setData(payload);
+    setData((prev) => ({ ...payload, uploads: prev.uploads }));
   }, [loadAppData]);
 
   // ── Hydrate from Supabase on mount ───────────────────────────────────────
@@ -255,7 +256,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         const payload = (await res.json()) as AppData;
-        if (!cancelled) setData(payload);
+        if (!cancelled) setData((prev) => ({ ...payload, uploads: prev.uploads }));
       } catch (err) {
         if (!cancelled) {
           console.error("[store] hydrate failed", err);
@@ -460,6 +461,15 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
 
   const addUpload = useCallback((artifact: UploadArtifact) => {
     setData((prev) => ({ ...prev, uploads: [artifact, ...prev.uploads] }));
+  }, []);
+
+  const updateUpload = useCallback((id: string, patch: Partial<UploadArtifact>) => {
+    setData((prev) => ({
+      ...prev,
+      uploads: prev.uploads.map((u) =>
+        u.id === id ? { ...u, ...patch } : u
+      ),
+    }));
   }, []);
 
   const refreshWeeklyCoursePulse = useCallback(
@@ -742,6 +752,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       updateGradeScore,
       replanStudy,
       addUpload,
+      updateUpload,
       syncGoogleCalendar,
       refreshWeeklyCoursePulse,
       fetchProfessorInsight,
@@ -762,6 +773,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       updateGradeScore,
       replanStudy,
       addUpload,
+      updateUpload,
       syncGoogleCalendar,
       refreshWeeklyCoursePulse,
       fetchProfessorInsight,

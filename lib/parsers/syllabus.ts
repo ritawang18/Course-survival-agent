@@ -41,6 +41,7 @@ export interface SyllabusParseResult {
   courseCode: string | null;
   courseName: string | null;
   instructor: string | null;
+  gradingPolicy: string | null;
 }
 
 const SYSTEM_PROMPT = `You are an expert academic document parser. Your job is to extract structured information from course syllabi.
@@ -69,7 +70,8 @@ Return ONLY a JSON object — no prose, no markdown fences. Use this exact schem
     "maxAbsences": 3,
     "penaltyPerAbsence": null,
     "confidence": 0.85
-  }
+  },
+  "gradingPolicy": "The lowest quiz score will be dropped. The final exam can replace a lower midterm score. Late homework receives 50% credit." | null
 }
 
 Rules:
@@ -77,6 +79,7 @@ Rules:
 - Weights must sum to 100 across all categories. If the syllabus gives a partial breakdown, include only what's stated.
 - cutoffs: extract grade cutoff table if present (e.g. "A: 93-100%", "B+: 87-89%"). Use the lower bound as minPercent.
 - confidence: 0.9+ = explicit in text, 0.7–0.89 = inferred, <0.7 = guessed.
+- gradingPolicy: extract any special grading rules verbatim from the syllabus (e.g. "lowest quiz dropped", "final replaces midterm if higher", "late penalty 10% per day"). Combine all such rules into a single string separated by ". ". null if no special rules found.
 - If a field has no information, use an empty array [] or null.
 - Do NOT invent data. Only extract what is actually in the document.`;
 

@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── Assignment upload ───────────────────────────────────────────────────
+    // ── Assignment upload (parse only — no DB writes) ────────────────────
     if (kind === "assignment") {
       if (!courseId) {
         return NextResponse.json(
@@ -71,25 +71,25 @@ export async function POST(req: NextRequest) {
         "[upload] parseAssignment result:\n" +
           JSON.stringify(result, null, 2)
       );
-      const assignmentId = await insertAssignment(courseId, result);
 
       return NextResponse.json({
         kind,
         fileName,
-        assignmentId,
+        courseId,
         extracted: {
           deadlines: result.dueDate
             ? [{ label: result.title ?? "Due date", date: result.dueDate, confidence: 0.9 }]
             : [],
           weights: [],
           examDates: [],
+          cutoffs: [],
           attendancePolicy: { text: "", confidence: 0 },
           assignment: result,
         },
       });
     }
 
-    // ── Syllabus upload ─────────────────────────────────────────────────────
+    // ── Syllabus upload (parse only — no DB writes) ─────────────────────
     const result = await parseSyllabus(rawText, {
       provider: aiConfig.provider,
       model: aiConfig.model,
@@ -100,34 +100,9 @@ export async function POST(req: NextRequest) {
         JSON.stringify(result, null, 2)
     );
 
-    // syllabus must be inserted first (courses.course_id FK references syllabus.course_id)
-    const syllabusId = await upsertSyllabus(result);
-    const newCourseId = await upsertCourse(user.id, syllabusId, result);
-    const assignmentsCreated = await insertSyllabusAssignments(newCourseId, result);
-
-    // Compile grading policy into executable code and cache it in syllabus.grading_code.
-    // grading_policy is populated by the partner's parser; skip silently if absent.
-    try {
-      const supabase = getServiceClient();
-      const { data: syllabusRow } = await supabase
-        .from("syllabus")
-        .select("grading_policy")
-        .eq("course_id", syllabusId)
-        .single();
-
-      if (syllabusRow?.grading_policy) {
-        await compileAndStoreGradePolicy(syllabusId, syllabusRow.grading_policy, aiConfig);
-      }
-    } catch (compileErr) {
-      // Non-fatal: grade calculation falls back to default policy if compilation fails
-      console.warn("[upload] grade policy compilation skipped:", compileErr);
-    }
-
     return NextResponse.json({
       kind,
       fileName,
-      courseId: newCourseId,
-      assignmentsCreated,
       extracted: {
         deadlines: result.deadlines,
         weights: result.weights,
@@ -137,6 +112,7 @@ export async function POST(req: NextRequest) {
         courseCode: result.courseCode,
         courseName: result.courseName,
         instructor: result.instructor,
+        gradingPolicy: result.gradingPolicy,
       },
     });
   } catch (err) {

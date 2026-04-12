@@ -120,9 +120,24 @@ async function resolveTeacher(
   );
   const edges = data.newSearch?.teachers?.edges ?? [];
   if (!edges.length) return null;
-  // Pick the one with the most ratings (best signal for the right person)
-  const best = [...edges].sort((a, b) => b.node.numRatings - a.node.numRatings)[0];
-  return best.node;
+
+  // Score each result by how well the name matches the requested professor
+  const nameParts = professorName.toLowerCase().split(/\s+/);
+  const scored = edges.map((edge) => {
+    const first = edge.node.firstName.toLowerCase();
+    const last = edge.node.lastName.toLowerCase();
+    let score = 0;
+    if (nameParts.some((p) => p === last)) score += 10;
+    if (nameParts.some((p) => p === first)) score += 5;
+    return { node: edge.node, score };
+  });
+
+  // Sort by name match score first, then by number of ratings as tiebreaker
+  scored.sort((a, b) => b.score - a.score || b.node.numRatings - a.node.numRatings);
+
+  // Only return if we have at least a partial name match
+  if (scored[0].score === 0) return null;
+  return scored[0].node;
 }
 
 interface TeacherRatingsResult {
