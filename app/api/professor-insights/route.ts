@@ -32,6 +32,7 @@ const RequestSchema = z.object({
   professorName: z.string().min(1).max(200),
   universityName: z.string().min(1).max(200),
   courseId: z.string().optional(),
+  force: z.boolean().optional(),
 });
 
 const CACHE_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -58,9 +59,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { professorName, universityName, courseId } = body;
+  const { professorName, universityName, courseId, force } = body;
 
-  // 2. Cache check (24h window, case-insensitive)
+  // 2. Cache check (24h window, case-insensitive) — skipped when force=true
   let supabase;
   try {
     supabase = getServiceClient();
@@ -87,7 +88,7 @@ export async function POST(req: NextRequest) {
   if (cacheErr) {
     console.error("[professor-insights] cache lookup failed", cacheErr);
     // Don't block on cache errors — fall through to a fresh fetch.
-  } else if (cachedRows && cachedRows.length > 0) {
+  } else if (!force && cachedRows && cachedRows.length > 0) {
     const row = cachedRows[0];
     const insight: InstructorInsight = {
       courseId: courseId ?? row.course_id ?? undefined,

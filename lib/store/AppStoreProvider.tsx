@@ -146,7 +146,7 @@ interface AppStoreValue {
   updateUpload: (id: string, patch: Partial<UploadArtifact>) => void;
   syncGoogleCalendar: () => Promise<void>;
   refreshWeeklyCoursePulse: (courseId: string) => Promise<void>;
-  fetchProfessorInsight: (courseId: string) => Promise<void>;
+  fetchProfessorInsight: (courseId: string, options?: { force?: boolean }) => Promise<void>;
   // toast
   toasts: Toast[];
   pushToast: (t: Omit<Toast, "id">) => void;
@@ -552,7 +552,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   );
 
   const fetchProfessorInsight = useCallback(
-    async (courseId: string) => {
+    async (courseId: string, options?: { force?: boolean }) => {
       const course = data.courses.find((c) => c.id === courseId);
       if (!course) {
         pushToast({
@@ -587,6 +587,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
             professorName: course.instructor,
             universityName: course.school,
             courseId,
+            force: options?.force,
           }),
         });
         const json = await res.json();

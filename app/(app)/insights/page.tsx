@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ExternalLink, Gauge, Info, MessageSquare, Quote, RefreshCw, Star, Users } from "lucide-react";
+import { ExternalLink, Gauge, Info, MessageSquare, Quote, RefreshCw, Search, Star, Users } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -169,21 +169,33 @@ export default function InsightsPage() {
               : "No cached insight yet. Click Refresh to fetch and summarize public source data for this instructor."}
           </p>
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          loading={loading}
-          disabled={!canRefresh}
-          onClick={() => fetchProfessorInsight(selectedId)}
-          title={
-            canRefresh
-              ? "Refresh public source data"
-              : "This course needs both instructor and school information before refreshing."
-          }
-        >
-          {!loading && <RefreshCw className="h-3.5 w-3.5" />}
-          Refresh from sources
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={loading}
+            disabled={!canRefresh}
+            onClick={() => fetchProfessorInsight(selectedId)}
+            title={
+              canRefresh
+                ? "Refresh public source data"
+                : "This course needs both instructor and school information before refreshing."
+            }
+          >
+            {!loading && <RefreshCw className="h-3.5 w-3.5" />}
+            Refresh from sources
+          </Button>
+          <Button
+            size="sm"
+            loading={loading}
+            disabled={!canRefresh}
+            onClick={() => fetchProfessorInsight(selectedId, { force: true })}
+            title="Force re-fetch and regenerate insights from scratch, ignoring any cached data"
+          >
+            {!loading && <Search className="h-3.5 w-3.5" />}
+            Investigate
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-5">

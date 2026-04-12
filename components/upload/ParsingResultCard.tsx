@@ -19,7 +19,7 @@ const kindLabel = {
 } as const;
 
 export function ParsingResultCard({ artifact }: { artifact: UploadArtifact }) {
-  const { updateUpload, refreshData, pushToast } = useAppStore();
+  const { updateUpload, refreshData, pushToast, fetchProfessorInsight } = useAppStore();
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [editedExtracted, setEditedExtracted] = useState(artifact.extracted);
@@ -64,11 +64,10 @@ export function ParsingResultCard({ artifact }: { artifact: UploadArtifact }) {
         }),
       });
 
+      const result = await res.json().catch(() => ({ error: "Confirm failed" }));
       if (!res.ok) {
-        const { error } = await res.json().catch(() => ({ error: "Confirm failed" }));
-        throw new Error(error);
+        throw new Error(result.error ?? "Confirm failed");
       }
-
       updateUpload(artifact.id, { status: "confirmed" });
       setEditing(false);
       await refreshData().catch(() => {});
@@ -77,6 +76,13 @@ export function ParsingResultCard({ artifact }: { artifact: UploadArtifact }) {
         title: "Applied to course",
         description: `${artifact.fileName} data saved successfully.`,
       });
+
+      // Auto-trigger professor insights for syllabus uploads
+      if (artifact.kind === "syllabus" && result.courseId) {
+        fetchProfessorInsight(result.courseId).catch((err) =>
+          console.warn("[upload] auto professor insight failed:", err)
+        );
+      }
     } catch (err) {
       pushToast({
         kind: "error",
