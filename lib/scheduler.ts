@@ -88,7 +88,8 @@ Generate a study schedule as an array of study blocks. Return ONLY valid JSON in
 }
 
 Scheduling rules:
-1. URGENT = due within 3 days or exam within 3 days. Always schedule these first.
+1. Priority order: URGENT (due ≤3 days) > IMPORTANT (due ≤7 days) > OPTIONAL.
+   Higher priority tasks get more total blocks, but still spread across multiple days.
 2. IMPORTANT = due within 7 days or exam within 7 days.
 3. OPTIONAL = anything else.
 4. Never place a study block outside the provided free windows.
@@ -98,6 +99,12 @@ Scheduling rules:
 8. Each block should be 1–2 hours. Break longer sessions into multiple blocks.
 9. If a free window is too short for a needed block, set conflict: true and place it anyway.
 10. Do NOT include class, exam, or office_hours blocks — only type: "study".
+11. Treat weekend free windows identically to weekday windows — use them.
+12. Spread blocks across all available days up to the due date — do not cluster everything on 1–2 days. Even urgent tasks should use every available day before their deadline.
+13. Use each assignment's estimatedHours to determine total study time. 
+    If estimatedHours = 3, create 2–3 blocks of 1–1.5h each.
+14. Use the assignment's difficulty field directly — do not infer it yourself.
+15. Today's free windows are valid — schedule blocks on today's date if slots are available.
 
 Return ONLY the JSON object. No prose, no markdown fences.`;
 

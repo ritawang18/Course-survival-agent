@@ -54,9 +54,13 @@ export default function PlannerPage() {
     return map;
   }, [days, studyBlocks]);
 
-  const nearestExam = [...data.exams]
-    .filter((e) => new Date(e.date) >= new Date())
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
+  const weekEnd = days[6];
+  const upcomingExams = [...data.exams]
+    .filter((e) => {
+      const d = new Date(e.date + "T00:00:00");
+      return d >= new Date(new Date().toDateString()) && d <= weekEnd;
+    })
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   const dayBlocks = byDay[selectedDay] ?? [];
 
@@ -85,20 +89,51 @@ export default function PlannerPage() {
         }
       />
 
-      {nearestExam && (
-        <div className="card-surface p-4 mb-5 flex items-start gap-3 border-l-4 border-l-warning">
-          <div className="h-8 w-8 rounded-xl bg-warning/10 flex items-center justify-center shrink-0">
-            <GraduationCap className="h-4 w-4 text-warning" />
+      {upcomingExams.length === 0 && (
+        <div className="card-surface p-4 mb-5 flex items-start gap-3 border-l-4 border-l-slate-300/60">
+          <div className="h-8 w-8 rounded-xl bg-[hsl(var(--surface-2))] flex items-center justify-center shrink-0">
+            <GraduationCap className="h-4 w-4 text-muted" />
           </div>
           <div className="flex-1">
-            <div className="text-sm font-medium">
-              Exam constraint: {nearestExam.title}
-            </div>
-            <div className="text-xs text-muted mt-0.5">
-              {data.courses.find((c) => c.id === nearestExam.course_id)?.code} · Blocks
-              8 hours of review this week for top priority topics.
+            <div className="text-sm text-muted">
+              No exams or projects due in the next 7 days.
             </div>
           </div>
+        </div>
+      )}
+
+      {upcomingExams.length > 0 && (
+        <div className="mb-5 space-y-2">
+          {upcomingExams.map((exam) => {
+            const course = data.courses.find((c) => c.id === exam.course_id);
+            const courseCode = course?.code ?? course?.course_id ?? "";
+            const examDate = new Date(exam.date + "T00:00:00");
+            const today = new Date(new Date().toDateString());
+            const daysUntil = Math.round((examDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            const hoursScheduled = studyBlocks
+              .filter((b) => b.course_id === exam.course_id && b.type === "study")
+              .reduce((h, b) => {
+                const [sh, sm] = b.start.split(":").map(Number);
+                const [eh, em] = b.end.split(":").map(Number);
+                return h + (eh + em / 60 - (sh + sm / 60));
+              }, 0);
+            const dateLabel = daysUntil === 0 ? "Today" : daysUntil === 1 ? "Tomorrow" : `In ${daysUntil} days`;
+            return (
+              <div key={exam.id} className="card-surface p-4 flex items-start gap-3 border-l-4 border-l-warning">
+                <div className="h-8 w-8 rounded-xl bg-warning/10 flex items-center justify-center shrink-0">
+                  <GraduationCap className="h-4 w-4 text-warning" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-medium">
+                    Exam constraint: {exam.title}
+                  </div>
+                  <div className="text-xs text-muted mt-0.5">
+                    {courseCode} · {dateLabel} ({format(examDate, "MMM d")}) · {hoursScheduled.toFixed(1)}h scheduled this week
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
