@@ -65,3 +65,27 @@ create table if not exists professor_insights (
 -- Lookup index for the cache check (24h window) used by /api/professor-insights
 create index if not exists idx_prof_insights_lookup
   on professor_insights (lower(professor_name), lower(university_name), generated_at desc);
+
+create table if not exists weekly_course_pulse (
+  id uuid primary key default gen_random_uuid(),
+  course_uuid uuid not null references courses(id) on delete cascade,
+  course_id text not null,
+  course_name text,
+  anchor_date date not null,
+  past_window_start date not null,
+  past_window_end date not null,
+  future_window_start date not null,
+  future_window_end date not null,
+  past_week_learned text not null,
+  next_week_preview text not null,
+  past_week_evidence jsonb not null default '[]'::jsonb,
+  next_week_evidence jsonb not null default '[]'::jsonb,
+  confidence double precision not null default 0,
+  source_summary jsonb not null default '{}'::jsonb,
+  raw_context jsonb,
+  model text,
+  generated_at timestamptz not null default now()
+);
+
+create unique index if not exists idx_weekly_course_pulse_course_anchor
+  on weekly_course_pulse (course_uuid, anchor_date);

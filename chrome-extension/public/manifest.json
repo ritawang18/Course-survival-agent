@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Course Survival Agent",
+  "version": "0.1.0",
+  "description": "Canvas Companion Sidebar for contextual student survival help.",
+  "permissions": ["storage", "activeTab", "tabs", "sidePanel"],
+  "host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open Course Survival Agent"
+  },
+  "options_page": "options.html",
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*/*", "http://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
