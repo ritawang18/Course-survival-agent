@@ -7,13 +7,11 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import { useAppStore } from "@/lib/store/AppStoreProvider";
-import { weekDays, isoDay, isSameDay, shortDay, format } from "@/lib/utils/date";
+import { addDays, isoDay, isSameDay, shortDay, format } from "@/lib/utils/date";
 import { courseColorMap } from "@/components/common/CourseColor";
 import { cn } from "@/lib/utils/cn";
 import {
   Sparkles,
-  ChevronLeft,
-  ChevronRight,
   AlertTriangle,
   CalendarClock,
   Flame,
@@ -35,7 +33,7 @@ const priorityStyle = {
 export default function PlannerPage() {
   const { data, replanStudy, replanning } = useAppStore();
   const [anchor] = useState(new Date());
-  const days = useMemo(() => weekDays(anchor), [anchor]);
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(anchor, i)), [anchor]);
   const studyBlocks = data.studyBlocks;
   const [selectedDay, setSelectedDay] = useState<string>(
     isoDay(new Date()).slice(0, 10)
@@ -56,9 +54,13 @@ export default function PlannerPage() {
     return map;
   }, [days, studyBlocks]);
 
-  const nearestExam = [...data.exams]
-    .filter((e) => new Date(e.date) >= new Date())
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
+  const weekEnd = days[6];
+  const upcomingExams = [...data.exams]
+    .filter((e) => {
+      const d = new Date(e.date + "T00:00:00");
+      return d >= new Date(new Date().toDateString()) && d <= weekEnd;
+    })
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   const dayBlocks = byDay[selectedDay] ?? [];
 
@@ -70,16 +72,10 @@ export default function PlannerPage() {
         description="Dynamically generated based on deadlines, difficulty, and your current progress."
         actions={
           <div className="flex items-center gap-2">
-            <div className="inline-flex items-center border border-border rounded-xl bg-surface">
-              <button className="h-9 w-9 flex items-center justify-center hover:bg-[hsl(var(--surface-2))] rounded-l-xl">
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <span className="text-xs font-medium px-3">
+            <div className="inline-flex items-center border border-border rounded-xl bg-surface px-3 h-9">
+              <span className="text-xs font-medium">
                 {format(days[0], "MMM d")} – {format(days[6], "MMM d")}
               </span>
-              <button className="h-9 w-9 flex items-center justify-center hover:bg-[hsl(var(--surface-2))] rounded-r-xl">
-                <ChevronRight className="h-4 w-4" />
-              </button>
             </div>
             <Button
               variant="primary"
@@ -93,20 +89,51 @@ export default function PlannerPage() {
         }
       />
 
-      {nearestExam && (
-        <div className="card-surface p-4 mb-5 flex items-start gap-3 border-l-4 border-l-warning">
-          <div className="h-8 w-8 rounded-xl bg-warning/10 flex items-center justify-center shrink-0">
-            <GraduationCap className="h-4 w-4 text-warning" />
+      {upcomingExams.length === 0 && (
+        <div className="card-surface p-4 mb-5 flex items-start gap-3 border-l-4 border-l-slate-300/60">
+          <div className="h-8 w-8 rounded-xl bg-[hsl(var(--surface-2))] flex items-center justify-center shrink-0">
+            <GraduationCap className="h-4 w-4 text-muted" />
           </div>
           <div className="flex-1">
-            <div className="text-sm font-medium">
-              Exam constraint: {nearestExam.title}
-            </div>
-            <div className="text-xs text-muted mt-0.5">
-              {data.courses.find((c) => c.id === nearestExam.course_id)?.code} · Blocks
-              8 hours of review this week for top priority topics.
+            <div className="text-sm text-muted">
+              No exams or projects due in the next 7 days.
             </div>
           </div>
+        </div>
+      )}
+
+      {upcomingExams.length > 0 && (
+        <div className="mb-5 space-y-2">
+          {upcomingExams.map((exam) => {
+            const course = data.courses.find((c) => c.id === exam.course_id);
+            const courseCode = course?.code ?? course?.course_id ?? "";
+            const examDate = new Date(exam.date + "T00:00:00");
+            const today = new Date(new Date().toDateString());
+            const daysUntil = Math.round((examDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            const hoursScheduled = studyBlocks
+              .filter((b) => b.course_id === exam.course_id && b.type === "study")
+              .reduce((h, b) => {
+                const [sh, sm] = b.start.split(":").map(Number);
+                const [eh, em] = b.end.split(":").map(Number);
+                return h + (eh + em / 60 - (sh + sm / 60));
+              }, 0);
+            const dateLabel = daysUntil === 0 ? "Today" : daysUntil === 1 ? "Tomorrow" : `In ${daysUntil} days`;
+            return (
+              <div key={exam.id} className="card-surface p-4 flex items-start gap-3 border-l-4 border-l-warning">
+                <div className="h-8 w-8 rounded-xl bg-warning/10 flex items-center justify-center shrink-0">
+                  <GraduationCap className="h-4 w-4 text-warning" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-medium">
+                    Exam constraint: {exam.title}
+                  </div>
+                  <div className="text-xs text-muted mt-0.5">
+                    {courseCode} · {dateLabel} ({format(examDate, "MMM d")}) · {hoursScheduled.toFixed(1)}h scheduled this week
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -207,7 +234,7 @@ export default function PlannerPage() {
             <CardHeader>
               <div>
                 <CardTitle>
-                  {format(new Date(selectedDay), "EEEE · MMM d")}
+                  {format(new Date(selectedDay + "T00:00:00"), "EEEE · MMM d")}
                 </CardTitle>
                 <p className="text-xs text-muted mt-1">
                   {dayBlocks.length} blocks scheduled
