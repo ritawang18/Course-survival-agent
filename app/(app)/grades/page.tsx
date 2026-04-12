@@ -10,12 +10,23 @@ import { GradeRing } from "@/components/common/GradeRing";
 import { courseColorMap } from "@/components/common/CourseColor";
 import { cn } from "@/lib/utils/cn";
 import { weightedGrade, projectedFinal, letter, gpa } from "@/lib/utils/grade";
-import { RotateCcw, TrendingUp, AlertCircle } from "lucide-react";
+import { RotateCcw, TrendingUp, AlertCircle, Sparkles } from "lucide-react";
+import { getSupabaseClient } from "@/lib/supabase/client";
+
+interface PolicyResult {
+  gradingPolicy: string;
+  projectedGrade: number;
+  currentGrade: number | null;
+}
 
 export default function GradesPage() {
   const { data, updateGradeScore } = useAppStore();
   const [selectedId, setSelectedId] = useState<string>(data.courses[0]?.id ?? "");
   const [optimistic, setOptimistic] = useState(85);
+
+  const [policyLoading, setPolicyLoading] = useState(false);
+  const [policyError, setPolicyError]     = useState<string | null>(null);
+  const [policyResult, setPolicyResult]   = useState<PolicyResult | null>(null);
 
   const selected = data.courses.find((c) => c.id === selectedId) ?? data.courses[0];
   const selectedWeights = useMemo(
@@ -32,6 +43,51 @@ export default function GradesPage() {
     [selectedWeights, optimistic]
   );
   const missing = selectedWeights.filter((g) => g.earned == null);
+
+  function handleSelectCourse(id: string) {
+    setSelectedId(id);
+    setPolicyResult(null);
+    setPolicyError(null);
+  }
+
+  async function handleApplyPolicy() {
+    if (!selected) return;
+    setPolicyLoading(true);
+    setPolicyError(null);
+    try {
+      const supabase = getSupabaseClient();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("You must be signed in.");
+
+      const res = await fetch("/api/grades/apply-policy", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          courseId: selected.id,
+          textCourseId: selected.course_id,
+          gradingWeights: selected.gradingWeights,
+          optimisticScore: optimistic,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to apply policy.");
+
+      setPolicyResult({
+        gradingPolicy:  json.gradingPolicy,
+        projectedGrade: json.result.projectedGrade,
+        currentGrade:   json.result.currentGrade,
+      });
+    } catch (err) {
+      setPolicyError(err instanceof Error ? err.message : "Unexpected error.");
+    } finally {
+      setPolicyLoading(false);
+    }
+  }
 
   if (!selected) {
     return (
@@ -50,6 +106,9 @@ export default function GradesPage() {
     );
   }
 
+  const displayProjected = policyResult?.projectedGrade ?? projected;
+  const isPolicyActive = policyResult !== null;
+
   return (
     <div>
       <PageHeader
@@ -62,7 +121,7 @@ export default function GradesPage() {
         {data.courses.map((c) => (
           <button
             key={c.id}
-            onClick={() => setSelectedId(c.id)}
+            onClick={() => handleSelectCourse(c.id)}
             className={cn(
               "p-3 rounded-xl border text-left transition-all",
               selectedId === c.id
@@ -102,9 +161,8 @@ export default function GradesPage() {
                 size="sm"
                 variant="ghost"
                 onClick={() => {
-                  // reset earned to original from seed — simplified: clear overrides
                   selected.gradingWeights.forEach((g) => {
-                    updateGradeScore(selected.id, g.id, g.earned);
+                    updateGradeScore(selected.id, g.id, undefined);
                   });
                 }}
               >
@@ -172,6 +230,63 @@ export default function GradesPage() {
             </CardBody>
           </Card>
 
+          {/* AI Policy Card */}
+          <Card>
+            <CardHeader>
+              <div>
+                <CardTitle>Implicit grading policies</CardTitle>
+                <p className="text-xs text-muted mt-1">
+                  Apply special rules from the syllabus (drop lowest, curves, attendance penalties)
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant={isPolicyActive ? "secondary" : "primary"}
+                onClick={handleApplyPolicy}
+                loading={policyLoading}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                {isPolicyActive ? "Re-apply policy" : "Apply implicit grading policies from the syllabus"}
+              </Button>
+            </CardHeader>
+
+            {(policyResult || policyError) && (
+              <CardBody className="space-y-4">
+                {policyError && (
+                  <p className="text-xs text-danger">{policyError}</p>
+                )}
+
+                {policyResult && (
+                  <>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wider text-muted font-medium mb-2">
+                        Implicit grading policy identified
+                      </div>
+                      <div className="rounded-xl border border-border bg-[hsl(var(--surface-2))] p-3 text-xs text-muted leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
+                        {policyResult.gradingPolicy}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-3 rounded-xl border border-accent/30 bg-[hsl(var(--accent-soft))]/20">
+                      <Sparkles className="h-4 w-4 text-accent shrink-0" />
+                      <div>
+                        <div className="text-xs font-medium text-accent">
+                          Policy-adjusted projected grade
+                        </div>
+                        <div className="font-mono text-lg font-semibold">
+                          {policyResult.projectedGrade.toFixed(1)}%
+                          <span className="ml-2 text-sm font-normal text-muted">
+                            {letter(policyResult.projectedGrade)} · {gpa(policyResult.projectedGrade).toFixed(2)} GPA
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardBody>
+            )}
+          </Card>
+
           {missing.length > 0 && (
             <Card>
               <CardHeader>
@@ -235,18 +350,31 @@ export default function GradesPage() {
                 <div className="h-7 w-7 rounded-xl bg-[hsl(var(--accent-soft))] flex items-center justify-center">
                   <TrendingUp className="h-3.5 w-3.5 text-accent" />
                 </div>
-                <CardTitle>Projected final</CardTitle>
+                <div>
+                  <CardTitle>Projected final</CardTitle>
+                  {isPolicyActive && (
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Sparkles className="h-3 w-3 text-accent" />
+                      <span className="text-[10px] text-accent font-medium">Policy-adjusted</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </CardHeader>
             <CardBody>
               <div className="flex flex-col items-center text-center py-4">
-                <GradeRing grade={projected} size={120} stroke={8} />
+                <GradeRing grade={displayProjected} size={120} stroke={8} />
                 <div className="mt-3 font-mono text-2xl font-semibold">
-                  {projected.toFixed(1)}%
+                  {displayProjected.toFixed(1)}%
                 </div>
                 <div className="text-xs text-muted mt-0.5">
-                  {letter(projected)} · {gpa(projected).toFixed(2)} GPA
+                  {letter(displayProjected)} · {gpa(displayProjected).toFixed(2)} GPA
                 </div>
+                {isPolicyActive && (
+                  <div className="mt-2 text-[11px] text-muted/70">
+                    Standard: {projected.toFixed(1)}%
+                  </div>
+                )}
               </div>
 
               <div className="mt-4 pt-4 border-t border-border/60">

@@ -57,6 +57,7 @@ RULES:
 - If the policy is ambiguous, write a conservative implementation with a comment
 - CRITICAL: In the JSON output, all newlines inside string values MUST be escaped as \n — never emit literal newlines inside a JSON string value
 - Dynamic per-score weighting (e.g. higher exam counts more) MUST go in PREPROCESS by scaling scores[] and pointsPossible[] — ADJUST only has a single categoryAverage number and cannot re-weight individual scores
+- CRITICAL SCOPE RULE: In the FINAL slot, categoryName and categoryWeight are NOT defined — they only exist inside the per-category loop. To inspect per-category results in FINAL, iterate over the categoryResults array: each element has {id, name, weight, processedAverage, contribution}. Never reference categoryName or categoryWeight in the FINAL slot.
 
 OUTPUT FORMAT (return only this JSON, no prose, no markdown fences):
 {
@@ -96,7 +97,7 @@ async function callModel(
     config: aiConfig,
     system: SYSTEM_PROMPT,
     prompt: `Grading policy from syllabus:\n\n${gradingPolicy}`,
-    maxOutputTokens: 1024,
+    maxOutputTokens: 2048,
     temperature: 0.1,   // low temperature for deterministic code generation
   });
 
@@ -128,6 +129,29 @@ function parseModelResponse(raw: string): Partial<Record<SlotName, string>> {
     const value = parsed[slot];
     if (typeof value === "string" && value.trim()) {
       slots[slot] = value.trim();
+    }
+  }
+
+  // Guard: the FINAL slot runs outside the per-category loop, so categoryName
+  // and categoryWeight are not in scope there. If the LLM put them in anyway,
+  // drop the slot rather than letting the vm crash at runtime.
+  if (slots.FINAL && /\bcategoryName\b|\bcategoryWeight\b/.test(slots.FINAL)) {
+    console.warn(
+      "[grade-policy-compiler] FINAL slot references out-of-scope per-category " +
+      "variables (categoryName/categoryWeight) — dropping slot to prevent vm crash"
+    );
+    delete slots.FINAL;
+  }
+
+  // Guard: PREPROCESS and ADJUST run inside the per-category loop and must not
+  // reference FINAL-only variables.
+  for (const slot of ["PREPROCESS", "ADJUST"] as const) {
+    if (slots[slot] && /\badjustedProjected\b/.test(slots[slot]!)) {
+      console.warn(
+        `[grade-policy-compiler] ${slot} slot references FINAL-only variable ` +
+        "(adjustedProjected) — dropping slot"
+      );
+      delete slots[slot];
     }
   }
 
