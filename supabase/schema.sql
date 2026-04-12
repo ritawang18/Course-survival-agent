@@ -7,13 +7,28 @@
 -- Order matters: parents before children because of FKs.
 
 create table if not exists syllabus (
-  course_id   text primary key,
-  break_down  jsonb,
-  exam_dates  jsonb,
-  project_date jsonb,
-  cut_off     jsonb,
-  created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now()
+  course_id      text primary key,
+  break_down     jsonb,
+  exam_dates     jsonb,
+  project_date   jsonb,
+  cut_off        jsonb,
+  grading_policy text,
+  grading_code   text,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now()
+);
+
+create table if not exists users (
+  id                   uuid primary key references auth.users(id) on delete cascade,
+  email                text,
+  full_name            text,
+  avatar_url           text,
+  canvas_user_id       text,
+  canvas_instance_url  text,
+  canvas_deployment_id text,
+  timezone             text default 'UTC',
+  created_at           timestamptz default now(),
+  updated_at           timestamptz default now()
 );
 
 create table if not exists courses (
@@ -21,8 +36,15 @@ create table if not exists courses (
   user_id                    uuid not null references auth.users(id) on delete cascade,
   course_id                  text not null references syllabus(course_id) on delete cascade,
   course_name                text not null,
+  term                       text,
   instructor_name            text,
+  syllabus_text              text,
+  current_grade_percent      numeric,
+  attendance_missed_count    integer default 0,
   attendance_allowed_misses  integer not null default 0,
+  location                   text,
+  credits                    integer,
+  schedule                   text,
   created_at                 timestamptz not null default now(),
   updated_at                 timestamptz not null default now(),
   -- Required for upsertCourse's `onConflict: "user_id,course_id"` clause.
@@ -32,59 +54,106 @@ create table if not exists courses (
 create index if not exists idx_courses_user_id on courses (user_id);
 
 create table if not exists assignments (
-  id               uuid primary key default gen_random_uuid(),
-  course_id        uuid not null references courses(id) on delete cascade,
-  title            text not null,
-  assignment_type  text not null,
-  due_at           timestamptz,
-  status           text not null default 'not_started',
-  points_possible  numeric,
-  estimated_hours  numeric,
-  description      text,
-  dependencies     text[] default '{}'::text[],
-  created_at       timestamptz not null default now(),
-  updated_at       timestamptz not null default now()
+  id                   uuid primary key default gen_random_uuid(),
+  course_id            uuid not null references courses(id) on delete cascade,
+  grade_component_id   uuid,
+  canvas_assignment_id text,
+  title                text not null,
+  assignment_type      text not null,
+  description          text,
+  due_at               timestamptz,
+  available_from       timestamptz,
+  available_until      timestamptz,
+  points_possible      numeric,
+  score_received       numeric,
+  status               text not null default 'not_started',
+  estimated_hours      numeric,
+  importance_score     numeric,
+  dependencies         text[] default '{}'::text[],
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
 );
 
 create index if not exists idx_assignments_course_id on assignments (course_id);
 create index if not exists idx_assignments_due_at on assignments (due_at);
 
+-- ─── Attendance records ──────────────────────────────────────────────────────
+
+create table if not exists attendance_records (
+  id          uuid primary key default gen_random_uuid(),
+  course_id   uuid not null references courses(id) on delete cascade,
+  class_date  date not null,
+  status      text not null default 'unknown',
+  recorded_by text default 'manual',
+  notes       text,
+  created_at  timestamptz default now()
+);
+
+create index if not exists idx_attendance_course_id on attendance_records (course_id);
+
+-- ─── Course grades (1-to-1 with courses, shares the same uuid) ───────────────
+
+create table if not exists course_grades (
+  id                     uuid primary key references courses(id) on delete cascade,
+  current_percent        numeric,
+  current_letter_grade   text,
+  projected_percent      numeric,
+  projected_letter_grade text,
+  is_pf                  boolean,
+  calculated_at          timestamptz default now(),
+  created_at             timestamptz default now()
+);
+
+-- ─── Study plan ──────────────────────────────────────────────────────────────
+
+create table if not exists study_plan (
+  id         uuid primary key references courses(id) on delete cascade,
+  course_id  text,
+  title      text,
+  type       text,
+  priority   text,
+  difficulty text,
+  created_at timestamptz not null default now()
+);
+
 -- ─── Professor insights (used by /api/professor-insights) ─────────────────
 
 create table if not exists professor_insights (
-  id uuid primary key default gen_random_uuid(),
-  professor_name text not null,
+  id              uuid primary key default gen_random_uuid(),
+  professor_name  text not null,
   university_name text not null,
-  course_id text,
-  rmp jsonb,
-  reddit jsonb,
-  raw_sources jsonb,
-  generated_at timestamptz not null default now()
+  course_id       text,
+  rmp             jsonb,
+  reddit          jsonb,
+  raw_sources     jsonb,
+  generated_at    timestamptz not null default now()
 );
 
 -- Lookup index for the cache check (24h window) used by /api/professor-insights
 create index if not exists idx_prof_insights_lookup
   on professor_insights (lower(professor_name), lower(university_name), generated_at desc);
 
+-- ─── Weekly course pulse ─────────────────────────────────────────────────────
+
 create table if not exists weekly_course_pulse (
-  id uuid primary key default gen_random_uuid(),
-  course_uuid uuid not null references courses(id) on delete cascade,
-  course_id text not null,
-  course_name text,
-  anchor_date date not null,
-  past_window_start date not null,
-  past_window_end date not null,
+  id                  uuid primary key default gen_random_uuid(),
+  course_uuid         uuid not null references courses(id) on delete cascade,
+  course_id           text not null,
+  course_name         text,
+  anchor_date         date not null,
+  past_window_start   date not null,
+  past_window_end     date not null,
   future_window_start date not null,
-  future_window_end date not null,
-  past_week_learned text not null,
-  next_week_preview text not null,
-  past_week_evidence jsonb not null default '[]'::jsonb,
-  next_week_evidence jsonb not null default '[]'::jsonb,
-  confidence double precision not null default 0,
-  source_summary jsonb not null default '{}'::jsonb,
-  raw_context jsonb,
-  model text,
-  generated_at timestamptz not null default now()
+  future_window_end   date not null,
+  past_week_learned   text not null,
+  next_week_preview   text not null,
+  past_week_evidence  jsonb not null default '[]'::jsonb,
+  next_week_evidence  jsonb not null default '[]'::jsonb,
+  confidence          double precision not null default 0,
+  source_summary      jsonb not null default '{}'::jsonb,
+  raw_context         jsonb,
+  model               text,
+  generated_at        timestamptz not null default now()
 );
 
 create unique index if not exists idx_weekly_course_pulse_course_anchor
