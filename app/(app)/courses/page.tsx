@@ -2,6 +2,7 @@
 
 import { PageHeader } from "@/components/layout/PageHeader";
 import { CourseCard } from "@/components/courses/CourseCard";
+import { AddCourseModal } from "@/components/courses/AddCourseModal";
 import { useAppStore } from "@/lib/store/AppStoreProvider";
 import { Button } from "@/components/ui/Button";
 import { Grid2x2, Rows3, Plus } from "lucide-react";
@@ -12,8 +13,9 @@ import Link from "next/link";
 import { cn } from "@/lib/utils/cn";
 
 export default function CoursesPage() {
-  const { data } = useAppStore();
+  const { data, refreshData } = useAppStore();
   const [view, setView] = useState<"grid" | "list">("grid");
+  const [showAddModal, setShowAddModal] = useState(false);
   const avgGrade =
     data.courses.length > 0
       ? data.courses.reduce((sum, course) => sum + (course.current_grade_percent ?? 0), 0) /
@@ -52,7 +54,7 @@ export default function CoursesPage() {
                 <Rows3 className="h-3.5 w-3.5" />
               </button>
             </div>
-            <Button size="md" variant="primary">
+            <Button size="md" variant="primary" onClick={() => setShowAddModal(true)}>
               <Plus className="h-4 w-4" />
               Add course
             </Button>
@@ -125,6 +127,11 @@ export default function CoursesPage() {
           </table>
         </div>
       )}
+      <AddCourseModal
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onCreated={refreshData}
+      />
     </div>
   );
 }

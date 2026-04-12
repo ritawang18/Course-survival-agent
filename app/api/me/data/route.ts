@@ -22,7 +22,12 @@ interface DbCourseRow {
   course_id: string;
   course_name: string | null;
   instructor_name: string | null;
+  current_grade_percent: number | null;
+  attendance_missed_count: number | null;
   attendance_allowed_misses: number | null;
+  credits: number | null;
+  schedule: string | null;
+  term: string | null;
   created_at: string | null;
 }
 
@@ -660,7 +665,7 @@ export async function GET(req: NextRequest) {
     const { data: courseRows, error: courseError } = await supabase
       .from("courses")
       .select(
-        "id, course_id, course_name, instructor_name, attendance_allowed_misses, created_at"
+        "id, course_id, course_name, instructor_name, current_grade_percent, attendance_missed_count, attendance_allowed_misses, credits, schedule, term, created_at"
       )
       .eq("user_id", user.id)
       .order("created_at", { ascending: true });
@@ -858,8 +863,9 @@ export async function GET(req: NextRequest) {
       const derivedMockExamQuestions = buildMockExamQuestions(courseExams, pulse);
 
       const attendanceAllowed = row.attendance_allowed_misses ?? 0;
+      // course_grades takes precedence; fall back to the value stored directly on courses
       const currentGradePercent =
-        grade?.current_percent ?? grade?.projected_percent ?? undefined;
+        grade?.current_percent ?? grade?.projected_percent ?? row.current_grade_percent ?? undefined;
 
       return {
         id: row.id,
@@ -872,10 +878,10 @@ export async function GET(req: NextRequest) {
         course_id: row.course_id,
         course_name: row.course_name ?? row.course_id,
         instructor_name: row.instructor_name ?? undefined,
-        credits: 0,
-        schedule: "",
+        credits: row.credits ?? 0,
+        schedule: row.schedule ?? "",
         current_grade_percent: currentGradePercent,
-        attendance_missed_count: 0,
+        attendance_missed_count: row.attendance_missed_count ?? 0,
         attendance_allowed_misses: attendanceAllowed,
         attendancePolicy: {
           attendance_allowed_misses: attendanceAllowed,
