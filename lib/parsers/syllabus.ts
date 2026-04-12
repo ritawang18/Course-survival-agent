@@ -32,11 +32,19 @@ export interface ParsedCutoff {
   confidence: number;
 }
 
+export interface ParsedTopicOutlineWeek {
+  label: string;
+  topics: string[];
+  dateRange: string | null;
+  confidence: number;
+}
+
 export interface SyllabusParseResult {
   deadlines: ParsedDeadline[];
   weights: ParsedWeight[];
   examDates: ParsedExamDate[];
   cutoffs: ParsedCutoff[];
+  topicOutline: ParsedTopicOutlineWeek[];
   attendancePolicy: ParsedAttendancePolicy;
   courseCode: string | null;
   courseName: string | null;
@@ -65,6 +73,14 @@ Return ONLY a JSON object — no prose, no markdown fences. Use this exact schem
     { "grade": "A", "minPercent": 93, "confidence": 0.98 },
     { "grade": "A-", "minPercent": 90, "confidence": 0.98 }
   ],
+  "topicOutline": [
+    {
+      "label": "Week 1",
+      "topics": ["Introduction to regression", "Linear models"],
+      "dateRange": "Aug 26-Aug 30",
+      "confidence": 0.84
+    }
+  ],
   "attendancePolicy": {
     "text": "You may miss up to 3 lectures without penalty.",
     "maxAbsences": 3,
@@ -78,6 +94,7 @@ Rules:
 - All dates in ISO 8601. If no time specified, use 23:59:00 for deadlines and 00:00:00 for exams.
 - Weights must sum to 100 across all categories. If the syllabus gives a partial breakdown, include only what's stated.
 - cutoffs: extract grade cutoff table if present (e.g. "A: 93-100%", "B+: 87-89%"). Use the lower bound as minPercent.
+- topicOutline: extract weekly, unit, module, or schedule-outline sections when present. Each item should name the week/unit/module and list the main concepts or topics. Use [] if the syllabus does not provide a week-by-week or unit-by-unit outline.
 - confidence: 0.9+ = explicit in text, 0.7–0.89 = inferred, <0.7 = guessed.
 - gradingPolicy: extract any special grading rules verbatim from the syllabus (e.g. "lowest quiz dropped", "final replaces midterm if higher", "late penalty 10% per day"). Combine all such rules into a single string separated by ". ". null if no special rules found.
 - If a field has no information, use an empty array [] or null.

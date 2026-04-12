@@ -123,6 +123,8 @@ export function ParsingResultCard({ artifact }: { artifact: UploadArtifact }) {
     }));
   };
 
+  const currentExtracted = editing ? editedExtracted : artifact.extracted;
+
   return (
     <Card className={cn(needsReview && "ring-1 ring-warning/40 border-warning/30")}>
       <CardHeader>
@@ -174,9 +176,9 @@ export function ParsingResultCard({ artifact }: { artifact: UploadArtifact }) {
         </CardBody>
       ) : (
         <CardBody className="space-y-5">
-          {(editing ? editedExtracted : artifact.extracted).deadlines.length > 0 && (
+          {currentExtracted.deadlines.length > 0 && (
             <Section title="Deadlines">
-              {(editing ? editedExtracted : artifact.extracted).deadlines.map((d, i) => (
+              {currentExtracted.deadlines.map((d, i) => (
                 editing ? (
                   <EditableRow
                     key={i}
@@ -198,9 +200,9 @@ export function ParsingResultCard({ artifact }: { artifact: UploadArtifact }) {
             </Section>
           )}
 
-          {(editing ? editedExtracted : artifact.extracted).weights.length > 0 && (
+          {currentExtracted.weights.length > 0 && (
             <Section title="Grading weights">
-              {(editing ? editedExtracted : artifact.extracted).weights.map((w, i) => (
+              {currentExtracted.weights.map((w, i) => (
                 editing ? (
                   <EditableRow
                     key={i}
@@ -223,9 +225,9 @@ export function ParsingResultCard({ artifact }: { artifact: UploadArtifact }) {
             </Section>
           )}
 
-          {(editing ? editedExtracted : artifact.extracted).examDates.length > 0 && (
+          {currentExtracted.examDates.length > 0 && (
             <Section title="Exam dates">
-              {(editing ? editedExtracted : artifact.extracted).examDates.map((e, i) => (
+              {currentExtracted.examDates.map((e, i) => (
                 editing ? (
                   <EditableRow
                     key={i}
@@ -247,20 +249,53 @@ export function ParsingResultCard({ artifact }: { artifact: UploadArtifact }) {
             </Section>
           )}
 
-          {(editing ? editedExtracted : artifact.extracted).attendancePolicy.text && (
+          {currentExtracted.topicOutline && currentExtracted.topicOutline.length > 0 && (
+            <Section title="Week / topic outline">
+              <div className="space-y-2">
+                {currentExtracted.topicOutline.map((item, index) => (
+                  <div
+                    key={`${item.label}-${index}`}
+                    className={cn(
+                      "rounded-xl px-3 py-3 border border-border/60",
+                      item.confidence < 0.75 && "border-warning/40 bg-warning/5"
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium">{item.label}</div>
+                        {item.dateRange && (
+                          <div className="text-[11px] text-muted mt-0.5">{item.dateRange}</div>
+                        )}
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {item.topics.map((topic) => (
+                            <span
+                              key={`${item.label}-${topic}`}
+                              className="inline-flex items-center rounded-full bg-[hsl(var(--surface-2))] px-2 py-1 text-[11px] text-muted"
+                            >
+                              {topic}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <ConfidenceBadge value={item.confidence} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {currentExtracted.attendancePolicy.text && (
             <Section title="Attendance policy">
               <div
                 className={cn(
                   "rounded-xl muted-surface p-3 text-sm",
-                  (editing ? editedExtracted : artifact.extracted).attendancePolicy.confidence < 0.75 &&
-                    "ring-1 ring-warning/40 bg-warning/5"
+                  currentExtracted.attendancePolicy.confidence < 0.75 && "ring-1 ring-warning/40 bg-warning/5"
                 )}
               >
-                <p>{(editing ? editedExtracted : artifact.extracted).attendancePolicy.text}</p>
+                <p>{currentExtracted.attendancePolicy.text}</p>
                 <div className="mt-2">
-                  <ConfidenceBadge
-                    value={(editing ? editedExtracted : artifact.extracted).attendancePolicy.confidence}
-                  />
+                  <ConfidenceBadge value={currentExtracted.attendancePolicy.confidence} />
                 </div>
               </div>
             </Section>

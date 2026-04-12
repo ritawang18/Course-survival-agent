@@ -108,6 +108,7 @@ export async function POST(req: NextRequest) {
         weights: result.weights,
         examDates: result.examDates,
         cutoffs: result.cutoffs,
+        topicOutline: result.topicOutline,
         attendancePolicy: result.attendancePolicy,
         courseCode: result.courseCode,
         courseName: result.courseName,

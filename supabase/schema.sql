@@ -12,6 +12,7 @@ create table if not exists syllabus (
   exam_dates     jsonb,
   project_date   jsonb,
   cut_off        jsonb,
+  topic_outline  jsonb,
   grading_policy text,
   grading_code   text,
   created_at     timestamptz not null default now(),

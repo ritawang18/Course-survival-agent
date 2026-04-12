@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
         exam_dates: [],
         project_date: [],
         cut_off: [],
+        topic_outline: [],
       });
 
     if (syllabusErr) {

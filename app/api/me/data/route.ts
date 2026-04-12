@@ -56,6 +56,7 @@ interface DbSyllabusRow {
   exam_dates: unknown;
   project_date: unknown;
   cut_off: unknown;
+  topic_outline: unknown;
 }
 
 interface DbCourseGradeRow {
@@ -547,6 +548,27 @@ function buildUploadArtifacts(
               return { label, date, confidence };
             })
             .filter((item): item is { label: string; date: string; confidence: number } => item !== null),
+          topicOutline: asObjectArray(syllabus.topic_outline)
+            .map((item) => {
+              const label = asString(item.label);
+              const confidence = asNumber(item.confidence) ?? 0.8;
+              const dateRange = asString(item.dateRange) ?? null;
+              const topics = Array.isArray(item.topics)
+                ? item.topics.filter((topic): topic is string => typeof topic === "string" && topic.trim().length > 0)
+                : [];
+              if (!label || topics.length === 0) return null;
+              return { label, topics, dateRange, confidence };
+            })
+            .filter(
+              (
+                item
+              ): item is {
+                label: string;
+                topics: string[];
+                dateRange: string | null;
+                confidence: number;
+              } => item !== null
+            ),
           cutoffs: asObjectArray(syllabus.cut_off)
             .map((item) => {
               const grade = asString(item.grade);
@@ -734,7 +756,7 @@ export async function GET(req: NextRequest) {
       resolveOptionalRows<DbSyllabusRow>(
         supabase
           .from("syllabus")
-          .select("course_id, break_down, exam_dates, project_date, cut_off")
+          .select("course_id, break_down, exam_dates, project_date, cut_off, topic_outline")
           .in("course_id", textCourseIds),
         "syllabus"
       ),

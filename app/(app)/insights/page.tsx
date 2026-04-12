@@ -189,7 +189,7 @@ export default function InsightsPage() {
             size="sm"
             loading={loading}
             disabled={!canRefresh}
-            onClick={() => fetchProfessorInsight(selectedId, { force: true })}
+            onClick={() => fetchProfessorInsight(selectedId)}
             title="Force re-fetch and regenerate insights from scratch, ignoring any cached data"
           >
             {!loading && <Search className="h-3.5 w-3.5" />}

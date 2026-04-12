@@ -132,6 +132,12 @@ export interface UploadArtifact {
     weights: { name: string; percent: number; confidence: number }[];
     examDates: { label: string; date: string; confidence: number }[];
     cutoffs: { grade: string; minPercent: number; confidence: number }[];
+    topicOutline?: {
+      label: string;
+      topics: string[];
+      dateRange: string | null;
+      confidence: number;
+    }[];
     attendancePolicy: { text: string; confidence: number };
     courseCode?: string | null;
     courseName?: string | null;

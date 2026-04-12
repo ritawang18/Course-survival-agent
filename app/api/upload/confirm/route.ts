@@ -75,6 +75,7 @@ export async function POST(req: NextRequest) {
       weights: (extracted.weights as SyllabusParseResult["weights"]) ?? [],
       examDates: (extracted.examDates as SyllabusParseResult["examDates"]) ?? [],
       cutoffs: (extracted.cutoffs as SyllabusParseResult["cutoffs"]) ?? [],
+      topicOutline: (extracted.topicOutline as SyllabusParseResult["topicOutline"]) ?? [],
       attendancePolicy: (extracted.attendancePolicy as SyllabusParseResult["attendancePolicy"]) ?? {
         text: "",
         maxAbsences: null,
