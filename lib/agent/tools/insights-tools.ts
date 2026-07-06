@@ -12,9 +12,9 @@ export const fetchProfessorRatingTool: ToolDefinition<
     name: "fetch_professor_rating",
     description: "Look up a professor's RateMyProfessors score, difficulty, and recent student comments.", 
     inputSchema: z.object({
-        professorName: z.string.min(2),
-        universityNmae: z.string.min(2),
-    }), 
+        professorName: z.string().min(2),
+        universityName: z.string().min(2),
+    }),
     execute: async (args, _ctx) => {
         const rating = await fetchRmp({ 
             professorName: args.professorName,

@@ -4,6 +4,17 @@
 
 import {z} from "zod";
 import type {AgentContext, ToolDefinition} from "@/lib/agent/types";
+//import tools
+import {
+  listCourseTool,
+  listAssignementsTool,
+  getCourseGradeTool,
+} from "./db-tools";
+
+import {
+  fetchProfessorRatingTool,
+  fetchProfessorRedditPostsTool,
+} from "./insights-tools";
 
 const echoTool: ToolDefinition<{ text: string}, { echoed: string}> = {
     name: "echo",
@@ -17,17 +28,29 @@ const echoTool: ToolDefinition<{ text: string}, { echoed: string}> = {
     sideEffect: false,
 }; 
 
-const TOOL_LIST = [echoTool] as const;
+// A registry mixes tools with different TArgs/TResult, so it's stored as
+// ToolDefinition<any, any> — each tool's own inputSchema still validates
+// its args at runtime in runToolByName below.
+type AnyToolDefinition = ToolDefinition<any, any>;
 
-const TOOL_MAP = new Map<string, ToolDefinition>(
+const TOOL_LIST: AnyToolDefinition[] = [
+  echoTool,
+  listCourseTool,
+  listAssignementsTool,
+  getCourseGradeTool,
+  fetchProfessorRatingTool,
+  fetchProfessorRedditPostsTool,
+];
+
+const TOOL_MAP = new Map<string, AnyToolDefinition>(
     TOOL_LIST.map((tool) => [tool.name, tool])
 );
 
-export function getTool(name: string): ToolDefinition | null {
+export function getTool(name: string): AnyToolDefinition | null {
     return TOOL_MAP.get(name) ?? null;
 }
 
-export function listTools(): ToolDefinition[] {
+export function listTools(): AnyToolDefinition[] {
     return [...TOOL_LIST];
 }
 

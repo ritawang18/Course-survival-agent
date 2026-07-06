@@ -15,8 +15,8 @@ export const listCourseTool: ToolDefinition<
     description: "List all courses the user is enrolled in. Returns uuid, course code, name, and instructor.",
     // Zod schema: validates the LLM's args before execute() runs
     inputSchema: z.object({
-        limit: z.number().init().min(1).max(50).optional().default(20),
-    }), 
+        limit: z.number().min(1).max(50).optional().default(20),
+    }),
     execute: async (args, ctx: AgentContext) => {
         const supabase = getServiceClient();
         const { data, error } = await supabase
@@ -56,8 +56,8 @@ export const listAssignementsTool: ToolDefinition<
     description: "List assignments. Filter by course ID(UUID) and/r status (not_stated | in_progress | done | overdue).",
     inputSchema: z.object({
         courseId: z.string().uuid().optional(),
-        status: z.enum(["not_statrted", "in_progress", "done", "overdue"]).optimal(),
-        limit: z.number().int().min(1).max(100).optinal().default(30),
+        status: z.enum(["not_started", "in_progress", "done", "overdue"]).optional(),
+        limit: z.number().int().min(1).max(100).optional().default(30),
     }),
     execute: async (args, ctx: AgentContext) => {
         const supabase = getServiceClient();
@@ -86,7 +86,7 @@ export const listAssignementsTool: ToolDefinition<
         }
 
         const { data, error } = await query;
-        if (error) throw new error(`list_assignments failed: ${error.message}`);
+        if (error) throw new Error(`list_assignments failed: ${error.message}`);
 
         return {
             assignments: (data ?? []).map((row) => ({
@@ -122,9 +122,9 @@ export const getCourseGradeTool: ToolDefinition<
         const supabase = getServiceClient();
         const { data, error } = await supabase
             .from("course_grades")
-            .select("current_percent, current)letter_grade, projected_percent, projected_letter_grade")
+            .select("current_percent, current_letter_grade, projected_percent, projected_letter_grade")
             .eq("id", args.courseId)
-            .mayveSingle() // returns null instead of error if no row found 
+            .maybeSingle(); // returns null instead of error if no row found
 
         if (error) throw new Error(`get_course_grade failed: ${error.message}`);
         if (!data) return { grade: null };
