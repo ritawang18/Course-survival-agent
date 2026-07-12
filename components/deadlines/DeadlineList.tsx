@@ -6,17 +6,10 @@ import { useAppStore } from "@/lib/store/AppStoreProvider";
 import { relativeDue } from "@/lib/utils/date";
 import { courseColorMap } from "@/components/common/CourseColor";
 import { PriorityBadge } from "@/components/common/PriorityBadge";
-import type { Priority } from "@/lib/store/types";
 import { cn } from "@/lib/utils/cn";
+import { priorityFromDueDate } from "@/lib/utils/priority";
 import { differenceInCalendarDays } from "date-fns";
 import { Clock } from "lucide-react";
-
-function priorityFromScore(score: number | undefined): Priority {
-  if (score == null) return "optional";
-  if (score >= 70) return "urgent";
-  if (score >= 40) return "important";
-  return "optional";
-}
 
 export function DeadlineList({ limit = 6 }: { limit?: number }) {
   const { data } = useAppStore();
@@ -58,7 +51,7 @@ export function DeadlineList({ limit = 6 }: { limit?: number }) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-medium truncate">{a.title}</span>
-                  <PriorityBadge priority={priorityFromScore(a.importance_score)} />
+                  <PriorityBadge priority={priorityFromDueDate(a.due_at)} />
                 </div>
                 <div className="flex items-center gap-2 text-[11px] text-muted mt-0.5">
                   <span>{course?.code ?? course?.course_id}</span>

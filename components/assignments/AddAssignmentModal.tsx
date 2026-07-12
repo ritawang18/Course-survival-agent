@@ -23,6 +23,12 @@ const ASSIGNMENT_TYPES = [
   { value: "essay",    label: "Essay / Paper" },
 ];
 
+const DIFFICULTY_OPTIONS = [
+  { value: "easy",   label: "Easy" },
+  { value: "medium", label: "Medium" },
+  { value: "hard",   label: "Hard" },
+];
+
 export function AddAssignmentModal({ open, onClose, onCreated }: Props) {
   const { data } = useAppStore();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -33,6 +39,8 @@ export function AddAssignmentModal({ open, onClose, onCreated }: Props) {
   const [points, setPoints]             = useState("");
   const [assignmentType, setAssignmentType] = useState("homework");
   const [status, setStatus]             = useState("not_started");
+  const [difficulty, setDifficulty]     = useState("medium");
+  const [weight, setWeight]             = useState("");
   const [file, setFile]                 = useState<File | null>(null);
   const [error, setError]               = useState<string | null>(null);
   const [loading, setLoading]           = useState(false);
@@ -41,6 +49,7 @@ export function AddAssignmentModal({ open, onClose, onCreated }: Props) {
   function reset() {
     setCourseId(""); setTitle(""); setDueAt(""); setPoints("");
     setAssignmentType("homework"); setStatus("not_started"); setFile(null);
+    setDifficulty("medium"); setWeight("");
     setError(null); setParsedNote(null);
   }
 
@@ -68,6 +77,10 @@ export function AddAssignmentModal({ open, onClose, onCreated }: Props) {
       setError("Total points must be a positive number.");
       return;
     }
+    if (weight && (isNaN(Number(weight)) || Number(weight) < 0 || Number(weight) > 100)) {
+      setError("Weight must be a number between 0 and 100.");
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -92,6 +105,8 @@ export function AddAssignmentModal({ open, onClose, onCreated }: Props) {
       if (title.trim())              form.append("title", title.trim());
       form.append("assignment_type", assignmentType);
       form.append("status",          status);
+      form.append("difficulty",      difficulty);
+      if (weight.trim())             form.append("weight", weight.trim());
       if (file)                      form.append("file", file);
 
       const res = await fetch("/api/assignments", {
@@ -209,6 +224,39 @@ export function AddAssignmentModal({ open, onClose, onCreated }: Props) {
               <option value="in_progress">In progress</option>
               <option value="done">Done</option>
             </select>
+          </div>
+        </div>
+
+        {/* Difficulty + Weight — side by side */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted uppercase tracking-wide">
+              Difficulty
+            </label>
+            <select
+              value={difficulty}
+              onChange={(e) => setDifficulty(e.target.value)}
+              className="h-9 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:ring-4 focus:ring-[hsl(var(--accent)/0.12)] focus:border-accent/60"
+            >
+              {DIFFICULTY_OPTIONS.map((d) => (
+                <option key={d.value} value={d.value}>{d.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted uppercase tracking-wide">
+              Weight
+              <span className="ml-1 text-muted/60 normal-case font-normal">(% of final grade)</span>
+            </label>
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              step={0.5}
+              placeholder="e.g. 15"
+              value={weight}
+              onChange={(e) => { setWeight(e.target.value); setError(null); }}
+            />
           </div>
         </div>
 

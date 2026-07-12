@@ -87,7 +87,6 @@ export interface Assignment {
   score_received?: number;
   status: AssignmentStatus;
   estimated_hours?: number;
-  importance_score?: number;
   dependencies?: string[];
 }
 

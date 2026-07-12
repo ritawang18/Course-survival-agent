@@ -18,15 +18,9 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { PriorityBadge } from "@/components/common/PriorityBadge";
 import { relativeDue } from "@/lib/utils/date";
+import { priorityOrDone } from "@/lib/utils/priority";
 import { ArrowLeft, CalendarDays } from "lucide-react";
 import Link from "next/link";
-
-function priorityFromImportanceScore(score?: number) {
-  if (score == null) return null;
-  if (score >= 80) return "urgent" as const;
-  if (score >= 50) return "important" as const;
-  return "optional" as const;
-}
 
 export default function CourseDetailPage() {
   const params = useParams<{ courseId: string }>();
@@ -90,7 +84,7 @@ export default function CourseDetailPage() {
               </CardHeader>
               <CardBody className="space-y-1">
                 {courseAssignments.map((a) => {
-                  const priority = priorityFromImportanceScore(a.importance_score);
+                  const priority = priorityOrDone(a.status, a.due_at);
                   return (
                   <div
                     key={a.id}

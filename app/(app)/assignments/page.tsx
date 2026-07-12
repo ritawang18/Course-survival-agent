@@ -9,15 +9,9 @@ import { Drawer } from "@/components/ui/Drawer";
 import { PriorityBadge } from "@/components/common/PriorityBadge";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useAppStore } from "@/lib/store/AppStoreProvider";
-import type { Assignment, AssignmentStatus, Priority } from "@/lib/store/types";
+import type { AssignmentStatus } from "@/lib/store/types";
 import { relativeDue } from "@/lib/utils/date";
-
-function priorityFromScore(score: number | undefined): Priority {
-  if (score == null) return "optional";
-  if (score >= 70) return "urgent";
-  if (score >= 40) return "important";
-  return "optional";
-}
+import { priorityOrDone } from "@/lib/utils/priority";
 import { courseColorMap } from "@/components/common/CourseColor";
 import { cn } from "@/lib/utils/cn";
 import {
@@ -177,7 +171,7 @@ export default function AssignmentsPage() {
                       {relativeDue(a.due_at!)}
                     </td>
                     <td className="px-3 py-3">
-                      <PriorityBadge priority={priorityFromScore(a.importance_score)} />
+                      <PriorityBadge priority={priorityOrDone(a.status, a.due_at)} />
                     </td>
                     <td className="px-3 py-3 text-muted font-mono text-xs">
                       {a.estimated_hours ?? 0}h
@@ -208,7 +202,7 @@ export default function AssignmentsPage() {
         {openAssignment && (
           <div className="space-y-5">
             <div className="flex flex-wrap items-center gap-2">
-              <PriorityBadge priority={priorityFromScore(openAssignment.importance_score)} />
+              <PriorityBadge priority={priorityOrDone(openAssignment.status, openAssignment.due_at)} />
               <Badge variant={statusMap[openAssignment.status].variant}>
                 {statusMap[openAssignment.status].label}
               </Badge>

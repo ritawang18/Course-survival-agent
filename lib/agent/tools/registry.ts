@@ -16,6 +16,9 @@ import {
   fetchProfessorRedditPostsTool,
 } from "./insights-tools";
 
+import { listCalendarEventsTool } from "./calendar-tools";
+import { generateStudyPlanTool } from "./planner-tools";
+
 const echoTool: ToolDefinition<{ text: string}, { echoed: string}> = {
     name: "echo",
     description: "Echo back the given text",
@@ -40,6 +43,8 @@ const TOOL_LIST: AnyToolDefinition[] = [
   getCourseGradeTool,
   fetchProfessorRatingTool,
   fetchProfessorRedditPostsTool,
+  listCalendarEventsTool,
+  generateStudyPlanTool,
 ];
 
 const TOOL_MAP = new Map<string, AnyToolDefinition>(

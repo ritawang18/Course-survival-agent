@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateStudyPlan, SchedulerInput } from "@/lib/scheduler";
+import { generateStudyPlan, persistStudyPlan, SchedulerInput } from "@/lib/scheduler";
 import { getUserFromRequest } from "@/lib/supabase/server";
-import { upsertStudyPlan } from "@/lib/db/study_plan";
 import { requireAIConfig } from "@/lib/ai/client";
-import { replaceStudyPlanBlocks } from "@/lib/db/study_plan_blocks";
 
 export const runtime = "nodejs";
 
@@ -44,58 +42,7 @@ export async function POST(req: NextRequest) {
       apiKey: aiConfig.apiKey,
     });
 
-    // ── Persist to study_plan (one row per course, most urgent block wins) ────
-    const courseUuidMap = Object.fromEntries(
-      body.courses
-        .filter((c) => c.uuid)
-        .map((c) => [c.id, c.uuid!])
-    );
-
-    // Group blocks by courseId, pick the highest-priority block per course
-    const priorityRank: Record<string, number> = { urgent: 3, important: 2, optional: 1 };
-    const perCourse = new Map<string, typeof result.studyBlocks[number]>();
-
-    for (const block of result.studyBlocks) {
-      const existing = perCourse.get(block.course_id);
-      const blockRank = block.priority ? (priorityRank[block.priority] ?? 0) : 0;
-      const existingRank = existing?.priority ? (priorityRank[existing.priority] ?? 0) : -1;
-      if (blockRank > existingRank) perCourse.set(block.course_id, block);
-    }
-
-    const planRows = [...perCourse.entries()]
-      .filter(([courseId]) => courseUuidMap[courseId])
-      .map(([courseId, block]) => ({
-        courseUuid: courseUuidMap[courseId],
-        courseId,
-        title: block.title,
-        type: block.type as string,
-        priority: block.priority ?? "optional",
-        difficulty: block.difficulty ?? "medium",
-      }));
-
-    const blockRows = result.studyBlocks
-      .filter((block) => courseUuidMap[block.course_id])
-      .map((block) => ({
-        courseUuid: courseUuidMap[block.course_id],
-        courseId: block.course_id,
-        title: block.title,
-        date: block.date,
-        start: block.start,
-        end: block.end,
-        type: block.type,
-        priority: block.priority ?? null,
-        difficulty: block.difficulty ?? null,
-        conflict: block.conflict ?? false,
-      }));
-
-    if (planRows.length > 0) {
-      await upsertStudyPlan(planRows);
-    }
-
-    await replaceStudyPlanBlocks(
-      Object.values(courseUuidMap),
-      blockRows
-    );
+    await persistStudyPlan(result, body.courses);
 
     return NextResponse.json(result);
   } catch (err) {

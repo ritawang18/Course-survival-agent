@@ -252,6 +252,8 @@ export const myTool: ToolDefinition<
 
 Register every new tool in `lib/agent/tools/registry.ts` → `TOOL_LIST` array.
 
+**Note for `brain/prompts.ts` (not yet built):** `listTools()` exposes each tool's `name` and `description` directly, but `inputSchema` is a Zod schema, not JSON — it can't be dropped into the prompt text as-is. Convert it to a JSON-schema-ish arg description (e.g. via `zod-to-json-schema`) so the LLM knows each tool's expected argument shape well enough to produce valid `toolArgs` JSON.
+
 ### LLM output format
 
 The system prompt instructs the LLM to always respond with one of:

@@ -138,7 +138,7 @@ interface AppStoreValue {
   markAttendance: (courseId: string, attended: boolean) => Promise<void>;
   decrementAttendance: (courseId: string) => Promise<void>;
   undoAttendance: (courseId: string, lastAction: "attended" | "missed") => Promise<void>;
-  setAssignmentStatus: (id: string, status: AssignmentStatus) => void;
+  setAssignmentStatus: (id: string, status: AssignmentStatus) => Promise<void>;
   updateGradeScore: (
     courseId: string,
     categoryId: string,
@@ -435,13 +435,35 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   );
 
   const setAssignmentStatus = useCallback(
-    (id: string, status: AssignmentStatus) => {
+    async (id: string, status: AssignmentStatus) => {
+      // Optimistic update
       setData((prev) => ({
         ...prev,
         assignments: prev.assignments.map((a) =>
           a.id === id ? { ...a, status } : a
         ),
       }));
+
+      try {
+        const supabase = getSupabaseClient();
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) return;
+
+        const res = await fetch("/api/assignments", {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ assignmentId: id, status }),
+        });
+        if (!res.ok) {
+          console.error("[assignments] status persist failed:", await res.text());
+        }
+      } catch (err) {
+        console.error("[assignments] status persist failed:", err);
+      }
     },
     []
   );

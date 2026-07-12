@@ -66,6 +66,7 @@ export async function insertAssignment(
         ? `Implicit requirements:\n${parsed.implicitRequirements.join("\n")}`
         : null,
       dependencies: parsed.conceptDependencies.map((d) => d.concept),
+      difficulty: parsed.difficulty,
       status: "not_started",
     })
     .select("id")
