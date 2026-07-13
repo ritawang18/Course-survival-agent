@@ -2,7 +2,6 @@ import { getServiceClient } from "@/lib/supabase/server";
 
 interface StudyPlanBlockRowInput {
   courseUuid: string;
-  courseId: string;
   title: string;
   date: string;
   start: string;
@@ -42,7 +41,6 @@ export async function replaceStudyPlanBlocks(
 
   const rows = blocks.map((block) => ({
     course_uuid: block.courseUuid,
-    course_id: block.courseId,
     title: block.title,
     date: block.date,
     start_time: block.start,

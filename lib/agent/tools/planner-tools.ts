@@ -22,13 +22,22 @@ export const generateStudyPlanTool: ToolDefinition<
     generated: boolean;
     reasoning?: string;
     warnings?: string[];
-    blockCount?: number;
+    blocks?: {
+      title: string;
+      courseName: string;
+      date: string;
+      start: string;
+      end: string;
+      priority?: string;
+      difficulty?: string;
+      conflict: boolean;
+    }[];
     message?: string;
   }
 > = {
   name: "generate_study_plan",
   description:
-    "Generate and save a study schedule for the user's upcoming assignments and exams, fit into their free time from Google Calendar. Optionally scope to one course by UUID. Requires the user to have connected Google Calendar.",
+    "Generate and save a study schedule for the user's upcoming assignments and exams, fit into their free time from Google Calendar. Returns the generated blocks (title, course, date, start/end time) and the scheduler's reasoning — relay these back to the user (e.g. 'Study calculus from 7:00-8:00, then work on your systems assignment from 8:15-9:30') rather than just confirming it saved. Optionally scope to one course by UUID. Requires the user to have connected Google Calendar.",
   inputSchema: z.object({
     courseId: z.string().uuid().optional(),
     horizonDays: z.number().int().min(1).max(30).optional().default(7),
@@ -123,11 +132,22 @@ export const generateStudyPlanTool: ToolDefinition<
 
     await persistStudyPlan(result, courses);
 
+    const courseNameByCode = new Map(courses.map((c) => [c.id, c.name]));
+
     return {
       generated: true,
       reasoning: result.reasoning,
       warnings: result.warnings,
-      blockCount: result.studyBlocks.length,
+      blocks: result.studyBlocks.map((block) => ({
+        title: block.title,
+        courseName: courseNameByCode.get(block.course_id) ?? block.course_id,
+        date: block.date,
+        start: block.start,
+        end: block.end,
+        priority: block.priority,
+        difficulty: block.difficulty,
+        conflict: block.conflict ?? false,
+      })),
     };
   },
   sideEffect: true, // writes study_plan + study_plan_blocks

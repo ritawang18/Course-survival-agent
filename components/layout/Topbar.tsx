@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Search, Command, Plus, Menu, LogOut, KeyRound } from "lucide-react";
+import { Bell, Search, Command, Plus, Menu, LogOut, KeyRound, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
@@ -76,10 +76,17 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar?: () => void }) {
       <div className="relative">
         <button
           onClick={() => setAccountOpen((v) => !v)}
-          className="h-9 w-9 rounded-full bg-gradient-to-br from-accent to-violet-500 flex items-center justify-center text-white text-xs font-semibold cursor-pointer"
+          className="h-9 flex items-center gap-2 pl-1.5 pr-2.5 rounded-full border border-border bg-surface hover:border-accent/40 transition-colors cursor-pointer"
           aria-label="Account menu"
+          aria-expanded={accountOpen}
         >
-          {initial}
+          <span className="h-6 w-6 shrink-0 rounded-full bg-gradient-to-br from-accent to-violet-500 flex items-center justify-center text-white text-[11px] font-semibold">
+            {initial}
+          </span>
+          <span className="hidden md:inline text-xs font-medium text-text/90 max-w-[140px] truncate">
+            {email ?? "Account"}
+          </span>
+          <ChevronDown className="h-3.5 w-3.5 text-muted" />
         </button>
 
         {accountOpen && (

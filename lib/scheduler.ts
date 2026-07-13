@@ -1,7 +1,6 @@
 import { extractJSON } from "@/lib/claude";
 import type { AIConfig } from "@/lib/ai/client";
 import type { StudyBlock, Priority, Difficulty } from "@/lib/store/types";
-import { upsertStudyPlan } from "@/lib/db/study_plan";
 import { replaceStudyPlanBlocks } from "@/lib/db/study_plan_blocks";
 
 // ── Input types ──────────────────────────────────────────────────────────────
@@ -164,8 +163,7 @@ export async function generateStudyPlan(
 // ── Persistence ──────────────────────────────────────────────────────────────
 
 /**
- * Persist a generated plan: one summary row per course in study_plan
- * (highest-priority block wins), plus every block in study_plan_blocks.
+ * Persist a generated plan: every block goes into study_plan_blocks.
  * Courses without a `uuid` are skipped (nothing to persist against).
  */
 export async function persistStudyPlan(
@@ -176,32 +174,10 @@ export async function persistStudyPlan(
     courses.filter((c) => c.uuid).map((c) => [c.id, c.uuid!])
   );
 
-  const priorityRank: Record<string, number> = { urgent: 3, important: 2, optional: 1 };
-  const perCourse = new Map<string, (typeof result.studyBlocks)[number]>();
-
-  for (const block of result.studyBlocks) {
-    const existing = perCourse.get(block.course_id);
-    const blockRank = block.priority ? (priorityRank[block.priority] ?? 0) : 0;
-    const existingRank = existing?.priority ? (priorityRank[existing.priority] ?? 0) : -1;
-    if (blockRank > existingRank) perCourse.set(block.course_id, block);
-  }
-
-  const planRows = [...perCourse.entries()]
-    .filter(([courseId]) => courseUuidMap[courseId])
-    .map(([courseId, block]) => ({
-      courseUuid: courseUuidMap[courseId],
-      courseId,
-      title: block.title,
-      type: block.type as string,
-      priority: block.priority ?? "optional",
-      difficulty: block.difficulty ?? "medium",
-    }));
-
   const blockRows = result.studyBlocks
     .filter((block) => courseUuidMap[block.course_id])
     .map((block) => ({
       courseUuid: courseUuidMap[block.course_id],
-      courseId: block.course_id,
       title: block.title,
       date: block.date,
       start: block.start,
@@ -211,10 +187,6 @@ export async function persistStudyPlan(
       difficulty: block.difficulty ?? null,
       conflict: block.conflict ?? false,
     }));
-
-  if (planRows.length > 0) {
-    await upsertStudyPlan(planRows);
-  }
 
   await replaceStudyPlanBlocks(Object.values(courseUuidMap), blockRows);
 }

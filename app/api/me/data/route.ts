@@ -68,18 +68,12 @@ interface DbCourseGradeRow {
 }
 
 interface DbStudyPlanRow {
-  id: string;
-  course_id: string;
   title: string | null;
-  type: string | null;
-  priority: string | null;
-  difficulty: string | null;
 }
 
 interface DbStudyPlanBlockRow {
   id: string;
   course_uuid: string;
-  course_id: string;
   title: string;
   date: string;
   start_time: string;
@@ -311,84 +305,10 @@ function toDateOnly(value: string) {
   return value.slice(0, 10);
 }
 
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function formatIsoDate(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function shiftDate(dateIso: string, days: number) {
-  const parsed = new Date(dateIso);
-  if (Number.isNaN(parsed.valueOf())) return formatIsoDate(addDays(new Date(), days));
-  return formatIsoDate(addDays(parsed, days));
-}
-
 function examLabelToQuestion(label: string) {
   if (/final/i.test(label)) return "What should I master before the final?";
   if (/midterm/i.test(label)) return "What topics are most likely to matter on the midterm?";
   return `What should I review before ${label}?`;
-}
-
-function buildStudyBlocksFromRows(input: {
-  courseRows: DbCourseRow[];
-  assignmentsByCourse: Map<string, Assignment[]>;
-  examsByCourse: Map<string, Exam[]>;
-  studyPlanByCourseUuid: Map<string, DbStudyPlanRow>;
-}): StudyBlock[] {
-  const today = new Date();
-
-  return input.courseRows.flatMap((courseRow, index) => {
-    const plan = input.studyPlanByCourseUuid.get(courseRow.id);
-    if (!plan?.title) return [];
-
-    const nextAssignment = (input.assignmentsByCourse.get(courseRow.id) ?? [])
-      .filter((assignment) => assignment.status !== "done" && !!assignment.due_at)
-      .sort((a, b) => new Date(a.due_at!).valueOf() - new Date(b.due_at!).valueOf())[0];
-
-    const nextExam = (input.examsByCourse.get(courseRow.id) ?? [])
-      .filter((exam) => new Date(exam.date).valueOf() >= today.valueOf())
-      .sort((a, b) => new Date(a.date).valueOf() - new Date(b.date).valueOf())[0];
-
-    const anchorDate =
-      nextAssignment?.due_at ??
-      nextExam?.date ??
-      formatIsoDate(addDays(today, index));
-
-    const blockDate = shiftDate(anchorDate, plan.priority === "urgent" ? -2 : -1);
-    const start =
-      plan.difficulty === "hard"
-        ? "09:00"
-        : plan.priority === "urgent"
-          ? "17:30"
-          : "19:00";
-    const end =
-      start === "09:00" ? "11:00" : start === "17:30" ? "19:00" : "20:30";
-
-    return [
-      {
-        id: `${courseRow.id}:study-plan`,
-        course_id: courseRow.id,
-        title: plan.title,
-        date: blockDate,
-        start,
-        end,
-        type: "study",
-        priority:
-          plan.priority === "urgent" || plan.priority === "important" || plan.priority === "optional"
-            ? plan.priority
-            : undefined,
-        difficulty:
-          plan.difficulty === "easy" || plan.difficulty === "medium" || plan.difficulty === "hard"
-            ? plan.difficulty
-            : undefined,
-        conflict: false,
-      },
-    ];
-  });
 }
 
 function buildPersistedStudyBlocks(rows: DbStudyPlanBlockRow[]): StudyBlock[] {
@@ -738,7 +658,6 @@ export async function GET(req: NextRequest) {
       assignmentRows,
       syllabusRows,
       gradeRows,
-      studyPlanRows,
       studyPlanBlockRows,
       professorInsightRows,
       pulseRows,
@@ -767,18 +686,11 @@ export async function GET(req: NextRequest) {
           .in("id", courseUuids),
         "course_grades"
       ),
-      resolveOptionalRows<DbStudyPlanRow>(
-        supabase
-          .from("study_plan")
-          .select("id, course_id, title, type, priority, difficulty")
-          .in("id", courseUuids),
-        "study_plan"
-      ),
       resolveOptionalRows<DbStudyPlanBlockRow>(
         supabase
           .from("study_plan_blocks")
           .select(
-            "id, course_uuid, course_id, title, date, start_time, end_time, type, priority, difficulty, conflict"
+            "id, course_uuid, title, date, start_time, end_time, type, priority, difficulty, conflict"
           )
           .in("course_uuid", courseUuids)
           .order("date", { ascending: true })
@@ -862,9 +774,14 @@ export async function GET(req: NextRequest) {
     const gradesByCourseUuid = new Map(
       gradeRows.map((row) => [row.id, row] as const)
     );
-    const studyPlanByCourseUuid = new Map(
-      studyPlanRows.map((row) => [row.id, row] as const)
-    );
+    // studyPlanBlockRows is ordered by date/start_time ascending, so the first
+    // row seen per course is its soonest-scheduled block.
+    const studyPlanByCourseUuid = new Map<string, DbStudyPlanRow>();
+    for (const row of studyPlanBlockRows) {
+      if (!studyPlanByCourseUuid.has(row.course_uuid)) {
+        studyPlanByCourseUuid.set(row.course_uuid, { title: row.title });
+      }
+    }
 
     const latestPulseByCourseUuid = new Map<string, DbWeeklyCoursePulseRow>();
     for (const row of pulseRows) {
@@ -975,15 +892,7 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    const persistedStudyBlocks = buildPersistedStudyBlocks(studyPlanBlockRows);
-    const persistedCourses = new Set(persistedStudyBlocks.map((block) => block.course_id));
-    const fallbackStudyBlocks = buildStudyBlocksFromRows({
-      courseRows: normalizedCourseRows.filter((row) => !persistedCourses.has(row.id)),
-      assignmentsByCourse,
-      examsByCourse,
-      studyPlanByCourseUuid,
-    });
-    const studyBlocks = [...persistedStudyBlocks, ...fallbackStudyBlocks];
+    const studyBlocks = buildPersistedStudyBlocks(studyPlanBlockRows);
 
     const payload: AppData = {
       courses,

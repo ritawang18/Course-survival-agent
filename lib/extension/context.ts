@@ -144,12 +144,7 @@ interface DbSyllabusRow {
 }
 
 interface DbStudyPlanRow {
-  id: string;
-  course_id: string;
-  title?: string | null;
-  type?: string | null;
-  priority?: string | null;
-  difficulty?: string | null;
+  title: string | null;
 }
 
 interface DbCourseGradeRow {
@@ -477,12 +472,14 @@ async function fetchSyllabus(courseKey: string): Promise<DbSyllabusRow | null> {
   return data && data.length > 0 ? (data[0] as DbSyllabusRow) : null;
 }
 
+/** Title of the soonest-scheduled study block for this course, if any. */
 async function fetchStudyPlan(courseUuid: string): Promise<DbStudyPlanRow | null> {
   const supabase = getServiceClient();
   const { data } = await supabase
-    .from("study_plan")
-    .select("id, course_id, title, type, priority, difficulty")
-    .eq("id", courseUuid)
+    .from("study_plan_blocks")
+    .select("title")
+    .eq("course_uuid", courseUuid)
+    .order("date", { ascending: true })
     .limit(1);
 
   return data && data.length > 0 ? (data[0] as DbStudyPlanRow) : null;

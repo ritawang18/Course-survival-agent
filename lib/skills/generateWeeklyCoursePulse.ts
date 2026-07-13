@@ -27,8 +27,6 @@ interface DbSyllabusRow {
 }
 
 interface DbStudyPlanRow {
-  id: string;
-  course_id: string;
   title: string | null;
   type: string | null;
   priority: string | null;
@@ -766,9 +764,11 @@ async function gatherContext(
       .eq("id", input.courseUuid)
       .maybeSingle(),
     supabase
-      .from("study_plan")
-      .select("id, course_id, title, type, priority, difficulty")
-      .eq("id", input.courseUuid)
+      .from("study_plan_blocks")
+      .select("title, type, priority, difficulty")
+      .eq("course_uuid", input.courseUuid)
+      .order("date", { ascending: true })
+      .limit(1)
       .maybeSingle(),
     supabase
       .from("assignments")

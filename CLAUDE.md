@@ -177,8 +177,7 @@ Course-survival-agent/
 │       ├── content/              # DOM observer + Canvas context scraper
 │       └── lib/                  # API client, Canvas parser, storage
 │
-└── supabase/
-    └── schema.sql                # Full DB schema — run once in Supabase SQL editor
+
 ```
 
 ---
@@ -351,27 +350,181 @@ name: (row.course_name ?? row.course_id) as string,
 
 ---
 
-## Migration Status
+## Current supabase database structure
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
 
-| File | Status |
-|---|---|
-| `lib/agent/types.ts` | Done |
-| `lib/agent/tools/registry.ts` | In progress — typo fixed, needs full tool list |
-| `lib/agent/tools/db-tools.ts` | In progress |
-| `lib/agent/tools/insights-tools.ts` | In progress |
-| `lib/agent/tools/pulse-tools.ts` | In progress |
-| `lib/agent/tools/planner-tools.ts` | In progress |
-| `lib/agent/tools/calendar-tools.ts` | In progress |
-| `lib/agent/brain/model-router.ts` | Not started |
-| `lib/agent/brain/prompts.ts` | Not started |
-| `lib/agent/brain/output-parsers.ts` | Not started |
-| `lib/agent/planner/step-policy.ts` | Not started |
-| `lib/agent/planner/react-planner.ts` | Not started |
-| `lib/agent/memory/short-term.ts` | Not started |
-| `app/api/agent/runs/route.ts` | Not started |
-| `app/api/agent/runs/[id]/route.ts` | Not started |
+CREATE TABLE public.users (
+  id uuid NOT NULL,
+  email text,
+  full_name text,
+  avatar_url text,
+  canvas_user_id text,
+  canvas_instance_url text,
+  canvas_deployment_id text,
+  timezone text DEFAULT 'UTC'::text,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT users_pkey PRIMARY KEY (id),
+  CONSTRAINT users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.courses (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  course_id text NOT NULL,
+  course_name text NOT NULL,
+  term text,
+  instructor_name text,
+  current_grade_percent numeric,
+  attendance_missed_count integer DEFAULT 0,
+  attendance_allowed_misses integer DEFAULT 0,
+  location text,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  credits integer,
+  schedule text,
+  CONSTRAINT courses_pkey PRIMARY KEY (id),
+  CONSTRAINT courses_course_id_fkey FOREIGN KEY (course_id) REFERENCES public.syllabus(course_id),
+  CONSTRAINT courses_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.assignments (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  course_id uuid NOT NULL,
+  grade_component_id uuid,
+  canvas_assignment_id text,
+  title text NOT NULL,
+  assignment_type text NOT NULL,
+  description text,
+  due_at timestamp with time zone,
+  available_from timestamp with time zone,
+  available_until timestamp with time zone,
+  points_possible numeric,
+  score_received numeric,
+  status text DEFAULT 'not_started'::text,
+  estimated_hours numeric,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  dependencies ARRAY,
+  difficulty text,
+  topic text,
+  CONSTRAINT assignments_pkey PRIMARY KEY (id),
+  CONSTRAINT assignments_course_id_fkey FOREIGN KEY (course_id) REFERENCES public.courses(id)
+);
+CREATE TABLE public.attendance_records (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  course_id uuid NOT NULL,
+  class_date date NOT NULL,
+  status text NOT NULL DEFAULT 'unknown'::text,
+  recorded_by text DEFAULT 'manual'::text,
+  notes text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT attendance_records_pkey PRIMARY KEY (id),
+  CONSTRAINT attendance_records_course_id_fkey FOREIGN KEY (course_id) REFERENCES public.courses(id)
+);
+CREATE TABLE public.course_grades (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  current_percent numeric,
+  current_letter_grade text,
+  projected_percent numeric,
+  projected_letter_grade text,
+  calculated_at timestamp with time zone DEFAULT now(),
+  created_at timestamp with time zone DEFAULT now(),
+  is_pf boolean,
+  CONSTRAINT course_grades_pkey PRIMARY KEY (id),
+  CONSTRAINT course_grades_id_fkey FOREIGN KEY (id) REFERENCES public.courses(id)
+);
+CREATE TABLE public.syllabus (
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  cut_off ARRAY,
+  break_down ARRAY,
+  exam_dates ARRAY,
+  project_date ARRAY,
+  course_id text NOT NULL,
+  grading_policy text,
+  grading_code text,
+  topic_outline jsonb,
+  course_uuid uuid,
+  CONSTRAINT syllabus_pkey PRIMARY KEY (course_id),
+  CONSTRAINT syllabus_course_uuid_fkey FOREIGN KEY (course_uuid) REFERENCES public.courses(id)
+);
+CREATE TABLE public.weekly_course_pulse (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  course_uuid uuid NOT NULL,
+  course_id text NOT NULL,
+  course_name text,
+  anchor_date date NOT NULL,
+  past_window_start date NOT NULL,
+  past_window_end date NOT NULL,
+  future_window_start date NOT NULL,
+  future_window_end date NOT NULL,
+  past_week_learned text NOT NULL,
+  next_week_preview text NOT NULL,
+  past_week_evidence jsonb NOT NULL DEFAULT '[]'::jsonb,
+  next_week_evidence jsonb NOT NULL DEFAULT '[]'::jsonb,
+  confidence double precision NOT NULL DEFAULT 0,
+  source_summary jsonb NOT NULL DEFAULT '{}'::jsonb,
+  raw_context jsonb,
+  model text,
+  generated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT weekly_course_pulse_pkey PRIMARY KEY (id),
+  CONSTRAINT weekly_course_pulse_course_uuid_fkey FOREIGN KEY (course_uuid) REFERENCES public.courses(id)
+);
+CREATE TABLE public.professor_insights (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  professor_name text NOT NULL,
+  university_name text NOT NULL,
+  course_id text,
+  rmp jsonb,
+  reddit jsonb,
+  raw_sources jsonb,
+  generated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT professor_insights_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.user_integration_tokens (
+  user_id uuid NOT NULL,
+  provider text NOT NULL CHECK (provider = ANY (ARRAY['llm'::text, 'canvas'::text])),
+  token text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT user_integration_tokens_pkey PRIMARY KEY (user_id, provider),
+  CONSTRAINT user_integration_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.user_llm_settings (
+  user_id uuid NOT NULL,
+  provider text NOT NULL CHECK (provider = ANY (ARRAY['openai'::text, 'anthropic'::text, 'gemini'::text])),
+  model text NOT NULL,
+  api_key text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT user_llm_settings_pkey PRIMARY KEY (user_id),
+  CONSTRAINT user_llm_settings_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.study_plan_blocks (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  course_uuid uuid NOT NULL,
+  title text NOT NULL,
+  date date NOT NULL,
+  start_time time without time zone NOT NULL,
+  end_time time without time zone NOT NULL,
+  type text NOT NULL,
+  priority text,
+  difficulty text,
+  conflict boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT study_plan_blocks_pkey PRIMARY KEY (id),
+  CONSTRAINT study_plan_blocks_course_uuid_fkey FOREIGN KEY (course_uuid) REFERENCES public.courses(id)
+);
+CREATE TABLE public.course_canvas_settings (
+  course_uuid uuid NOT NULL,
+  canvas_course_id text,
+  canvas_base_url text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT course_canvas_settings_pkey PRIMARY KEY (course_uuid),
+  CONSTRAINT course_canvas_settings_course_uuid_fkey FOREIGN KEY (course_uuid) REFERENCES public.courses(id)
+);
 
-Legacy skill files in `lib/skills/` remain untouched — tools wrap them rather than replacing them. The existing API routes (`/api/extension/ask-agent`, `/api/planner/generate`, etc.) also remain until the agent routes are proven.
 
 ---
 

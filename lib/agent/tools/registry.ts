@@ -9,6 +9,9 @@ import {
   listCourseTool,
   listAssignementsTool,
   getCourseGradeTool,
+  getCourseSyllabusTool,
+  getAssignmentTool,
+  getCourseTool,
 } from "./db-tools";
 
 import {
@@ -18,6 +21,7 @@ import {
 
 import { listCalendarEventsTool } from "./calendar-tools";
 import { generateStudyPlanTool } from "./planner-tools";
+import { calculateGradeScenarioTool } from "./grade-tools";
 
 const echoTool: ToolDefinition<{ text: string}, { echoed: string}> = {
     name: "echo",
@@ -41,10 +45,14 @@ const TOOL_LIST: AnyToolDefinition[] = [
   listCourseTool,
   listAssignementsTool,
   getCourseGradeTool,
+  getCourseSyllabusTool,
+  getAssignmentTool,
+  getCourseTool,
   fetchProfessorRatingTool,
   fetchProfessorRedditPostsTool,
   listCalendarEventsTool,
   generateStudyPlanTool,
+  calculateGradeScenarioTool,
 ];
 
 const TOOL_MAP = new Map<string, AnyToolDefinition>(
