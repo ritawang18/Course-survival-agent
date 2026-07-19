@@ -21,7 +21,8 @@ import {
 
 import { listCalendarEventsTool } from "./calendar-tools";
 import { generateStudyPlanTool } from "./planner-tools";
-import { calculateGradeScenarioTool } from "./grade-tools";
+import { calculateGradeScenarioTool, compileGradePolicyTool } from "./grade-tools";
+import { generateDashboardWeeklyOverviewTool, generateWeeklyPulseTool } from "./pulse-tools";
 
 const echoTool: ToolDefinition<{ text: string}, { echoed: string}> = {
     name: "echo",
@@ -53,6 +54,9 @@ const TOOL_LIST: AnyToolDefinition[] = [
   listCalendarEventsTool,
   generateStudyPlanTool,
   calculateGradeScenarioTool,
+  compileGradePolicyTool,
+  generateDashboardWeeklyOverviewTool,
+  generateWeeklyPulseTool,
 ];
 
 const TOOL_MAP = new Map<string, AnyToolDefinition>(

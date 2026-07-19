@@ -2,12 +2,14 @@
 
 import { z } from "zod";
 import { getServiceClient } from "@/lib/supabase/server";
+import { requireAIConfig } from "@/lib/ai/client";
 import {
   calculateCourse,
   type CourseInput,
   type GradeCutoff,
   type GradingCategory,
 } from "@/lib/skills/grade-calculator";
+import { compileAndStoreGradePolicy } from "@/lib/skills/grade-policy-compiler";
 import type { AgentContext, ToolDefinition } from "@/lib/agent/types";
 
 const OPTIMISTIC_SCORE = 85;
@@ -265,4 +267,53 @@ export const calculateGradeScenarioTool: ToolDefinition<
     };
   },
   sideEffect: false,
+};
+
+export const compileGradePolicyTool: ToolDefinition<
+  { courseId: string },
+  { compiled: boolean; message: string }
+> = {
+  name: "compile_grade_policy",
+  description:
+    "Compile a course's raw syllabus grading policy text into executable grade-calculation code, storing it for future use by calculate_grade_scenario and get_course_grade. Always recompiles even if a compiled version already exists (so re-run this after the syllabus changes). Requires the course to have a syllabus with a parsed grading policy — upload one first if this fails.",
+  inputSchema: z.object({
+    courseId: z.string().uuid(),
+  }),
+  execute: async (args, ctx: AgentContext) => {
+    const supabase = getServiceClient();
+
+    const { data: course, error: courseError } = await supabase
+      .from("courses")
+      .select("course_id")
+      .eq("id", args.courseId)
+      .eq("user_id", ctx.userId)
+      .maybeSingle();
+
+    if (courseError) throw new Error(`compile_grade_policy course lookup failed: ${courseError.message}`);
+    if (!course) return { compiled: false, message: "Course not found." };
+
+    const { data: syllabusRow, error: syllabusError } = await supabase
+      .from("syllabus")
+      .select("grading_policy")
+      .eq("course_id", course.course_id as string)
+      .maybeSingle();
+
+    if (syllabusError) {
+      throw new Error(`compile_grade_policy syllabus lookup failed: ${syllabusError.message}`);
+    }
+
+    const gradingPolicy = syllabusRow?.grading_policy as string | null;
+    if (!gradingPolicy) {
+      return {
+        compiled: false,
+        message: "No grading policy found in this course's syllabus. Upload or parse a syllabus with a grading breakdown first.",
+      };
+    }
+
+    const aiConfig = await requireAIConfig(ctx.userId);
+    await compileAndStoreGradePolicy(course.course_id as string, gradingPolicy, aiConfig);
+
+    return { compiled: true, message: "Grading policy compiled and saved." };
+  },
+  sideEffect: true, // writes syllabus.grading_code
 };
