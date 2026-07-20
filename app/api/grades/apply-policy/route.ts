@@ -4,6 +4,8 @@ import { requireAIConfig } from "@/lib/ai/client";
 import { compileAndStoreGradePolicy, getCompiledGradeCode } from "@/lib/skills/grade-policy-compiler";
 import { runGradeCode } from "@/lib/skills/grade-runner";
 import { categoryFromAggregated } from "@/lib/skills/grade-template";
+import { toLetter } from "@/lib/skills/grade-calculator";
+import { upsertCourseGrade } from "@/lib/db/grades";
 
 export const runtime = "nodejs";
 
@@ -34,7 +36,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { textCourseId, gradingWeights, optimisticScore = 85 } = (await req.json()) as {
+    const { courseId, textCourseId, gradingWeights, optimisticScore = 85 } = (await req.json()) as {
       courseId: string;
       textCourseId: string;
       gradingWeights: GradingCategory[];
@@ -86,6 +88,18 @@ export async function POST(req: NextRequest) {
       categoryFromAggregated(g.id, g.name, g.weight, g.earned)
     );
     const result = runGradeCode(compiledCode, categories, optimisticScore);
+
+    // Persist the policy-adjusted snapshot so course_grades reflects the number
+    // the user just saw (dashboard, snapshot ring and the agent all read it).
+    if (courseId) {
+      await upsertCourseGrade(courseId, {
+        currentPercent: result.currentGrade,
+        currentLetterGrade:
+          result.currentGrade != null ? toLetter(result.currentGrade) : "",
+        projectedPercent: result.projectedGrade,
+        projectedLetterGrade: toLetter(result.projectedGrade),
+      });
+    }
 
     return NextResponse.json({ gradingPolicy, result });
   } catch (err) {

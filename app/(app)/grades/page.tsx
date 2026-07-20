@@ -10,7 +10,7 @@ import { GradeRing } from "@/components/common/GradeRing";
 import { courseColorMap } from "@/components/common/CourseColor";
 import { cn } from "@/lib/utils/cn";
 import { weightedGrade, projectedFinal, letter, gpa } from "@/lib/utils/grade";
-import { RotateCcw, TrendingUp, AlertCircle, Sparkles } from "lucide-react";
+import { RotateCcw, TrendingUp, AlertCircle, Sparkles, Save } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 
 interface PolicyResult {
@@ -19,14 +19,28 @@ interface PolicyResult {
   currentGrade: number | null;
 }
 
+// Shape returned by POST /api/grades/calculate (one entry per course).
+interface CalcCourseResult {
+  currentGrade: number | null;
+  projectedGrade: number;
+  letterGrade: string;
+}
+
 export default function GradesPage() {
-  const { data, updateGradeScore } = useAppStore();
+  const { data, updateGradeScore, refreshData } = useAppStore();
   const [selectedId, setSelectedId] = useState<string>(data.courses[0]?.id ?? "");
   const [optimistic, setOptimistic] = useState(85);
 
   const [policyLoading, setPolicyLoading] = useState(false);
   const [policyError, setPolicyError]     = useState<string | null>(null);
   const [policyResult, setPolicyResult]   = useState<PolicyResult | null>(null);
+
+  // Backend-computed + persisted snapshot for the selected course (decision 一:
+  // the authoritative number and the course_grades write both come from the
+  // server engine, not the client-side estimate).
+  const [calcResult, setCalcResult]   = useState<CalcCourseResult | null>(null);
+  const [calcLoading, setCalcLoading] = useState(false);
+  const [calcError, setCalcError]     = useState<string | null>(null);
 
   const selected = data.courses.find((c) => c.id === selectedId) ?? data.courses[0];
   const selectedWeights = useMemo(
@@ -48,6 +62,63 @@ export default function GradesPage() {
     setSelectedId(id);
     setPolicyResult(null);
     setPolicyError(null);
+    setCalcResult(null);
+    setCalcError(null);
+  }
+
+  // Decision 一: run + persist through the backend engine. Sends the scores the
+  // user entered to POST /api/grades/calculate, which computes the (policy-aware)
+  // snapshot AND writes course_grades, then refreshes the store so the snapshot
+  // ring / dashboard reflect the persisted numbers.
+  async function handleRecalculate() {
+    if (!selected) return;
+    setCalcLoading(true);
+    setCalcError(null);
+    try {
+      const supabase = getSupabaseClient();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("You must be signed in.");
+
+      const res = await fetch("/api/grades/calculate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          courses: [
+            {
+              courseId: selected.id,
+              textCourseId: selected.course_id,
+              credits: selected.credits ?? 0,
+              gradingWeights: selected.gradingWeights,
+              isPF: false,
+            },
+          ],
+          optimisticScore: optimistic,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to calculate grade.");
+
+      const result = json.courses?.[0];
+      if (result) {
+        setCalcResult({
+          currentGrade: result.currentGrade,
+          projectedGrade: result.projectedGrade,
+          letterGrade: result.letterGrade,
+        });
+      }
+
+      // Pull the freshly persisted course_grades into the store.
+      await refreshData();
+    } catch (err) {
+      setCalcError(err instanceof Error ? err.message : "Unexpected error.");
+    } finally {
+      setCalcLoading(false);
+    }
   }
 
   async function handleApplyPolicy() {
@@ -106,8 +177,13 @@ export default function GradesPage() {
     );
   }
 
-  const displayProjected = policyResult?.projectedGrade ?? projected;
+  // Prefer the backend-persisted numbers, then a policy run, then the live
+  // client-side estimate (instant feedback while the user is typing).
+  const displayProjected =
+    calcResult?.projectedGrade ?? policyResult?.projectedGrade ?? projected;
+  const displayCurrent = calcResult?.currentGrade ?? current;
   const isPolicyActive = policyResult !== null;
+  const isCalcActive = calcResult !== null;
 
   return (
     <div>
@@ -157,19 +233,37 @@ export default function GradesPage() {
                   Edit any score to see live projection
                 </p>
               </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  selected.gradingWeights.forEach((g) => {
-                    updateGradeScore(selected.id, g.id, undefined);
-                  });
-                }}
-              >
-                <RotateCcw className="h-3 w-3" />
-                Reset
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    selected.gradingWeights.forEach((g) => {
+                      updateGradeScore(selected.id, g.id, undefined);
+                    });
+                    setCalcResult(null);
+                    setCalcError(null);
+                  }}
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Reset
+                </Button>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={handleRecalculate}
+                  loading={calcLoading}
+                >
+                  <Save className="h-3 w-3" />
+                  Save &amp; recalculate
+                </Button>
+              </div>
             </CardHeader>
+            {calcError && (
+              <div className="px-5 -mt-2 pb-1">
+                <p className="text-xs text-danger">{calcError}</p>
+              </div>
+            )}
             <CardBody className="space-y-4">
               {selected.gradingWeights.map((g) => (
                 <div key={g.id}>
@@ -297,21 +391,29 @@ export default function GradesPage() {
                   <div>
                     <CardTitle>Impact of missing work</CardTitle>
                     <p className="text-xs text-muted mt-0.5">
-                      If you score 0% vs 85% on ungraded items
+                      Final grade if you bomb (0%) vs ace (100%) each item, holding
+                      your other ungraded work at {optimistic}%
                     </p>
                   </div>
                 </div>
               </CardHeader>
               <CardBody className="space-y-3">
                 {missing.map((g) => {
-                  const withZero = weightedGrade([
-                    ...selected.gradingWeights.filter((x) => x.id !== g.id).map((x) => x),
-                    { ...g, earned: 0 },
-                  ]);
-                  const with85 = weightedGrade([
-                    ...selected.gradingWeights.filter((x) => x.id !== g.id).map((x) => x),
-                    { ...g, earned: 85 },
-                  ]);
+                  // Decision 二: hold every OTHER ungraded item at the assumed
+                  // slider score, then flip just this item between 0% and 100%.
+                  // Every row shares the same full-weight baseline, so the
+                  // numbers are comparable and tie back to the projected ring.
+                  const base = selected.gradingWeights.map((x) => ({
+                    ...x,
+                    earned: x.earned ?? optimistic,
+                  }));
+                  const ifZero = weightedGrade(
+                    base.map((x) => (x.id === g.id ? { ...x, earned: 0 } : x))
+                  );
+                  const ifFull = weightedGrade(
+                    base.map((x) => (x.id === g.id ? { ...x, earned: 100 } : x))
+                  );
+                  const swing = ifFull - ifZero;
                   return (
                     <div
                       key={g.id}
@@ -319,19 +421,24 @@ export default function GradesPage() {
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">{g.name}</span>
-                        <Badge variant="muted">{g.weight}%</Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="muted">{g.weight}%</Badge>
+                          <span className="text-[11px] text-muted font-mono">
+                            ±{swing.toFixed(1)} pts
+                          </span>
+                        </div>
                       </div>
                       <div className="flex items-center justify-between mt-2 text-xs">
                         <div>
-                          <div className="text-muted">Worst case (0%)</div>
+                          <div className="text-muted">Bomb it (0%)</div>
                           <div className="font-mono font-semibold text-danger">
-                            {withZero.toFixed(1)}%
+                            {ifZero.toFixed(1)}%
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="text-muted">Target (85%)</div>
+                          <div className="text-muted">Ace it (100%)</div>
                           <div className="font-mono font-semibold text-success">
-                            {with85.toFixed(1)}%
+                            {ifFull.toFixed(1)}%
                           </div>
                         </div>
                       </div>
@@ -352,12 +459,17 @@ export default function GradesPage() {
                 </div>
                 <div>
                   <CardTitle>Projected final</CardTitle>
-                  {isPolicyActive && (
+                  {isPolicyActive ? (
                     <div className="flex items-center gap-1 mt-0.5">
                       <Sparkles className="h-3 w-3 text-accent" />
                       <span className="text-[10px] text-accent font-medium">Policy-adjusted</span>
                     </div>
-                  )}
+                  ) : isCalcActive ? (
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Save className="h-3 w-3 text-accent" />
+                      <span className="text-[10px] text-accent font-medium">Saved</span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </CardHeader>
@@ -397,7 +509,7 @@ export default function GradesPage() {
                 <div className="mt-4 flex items-center justify-between text-xs">
                   <span className="text-muted">Current (graded only)</span>
                   <span className="font-mono font-semibold">
-                    {current.toFixed(1)}%
+                    {displayCurrent.toFixed(1)}%
                   </span>
                 </div>
               </div>
