@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromRequest, getServiceClient } from "@/lib/supabase/server";
+import { deleteCourse } from "@/lib/db/courses";
 
 /**
  * POST /api/courses
@@ -107,5 +108,35 @@ export async function POST(req: NextRequest) {
     console.error("[courses/create]", err);
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+/**
+ * DELETE /api/courses
+ *
+ * Deletes a course and every row that belongs to it (assignments, attendance
+ * records, grades, study plan blocks, canvas settings, weekly pulse, syllabus).
+ *
+ * Body: { courseId: string }
+ */
+export async function DELETE(req: NextRequest) {
+  const user = await getUserFromRequest(req);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const { courseId } = (await req.json()) as { courseId?: string };
+    if (!courseId) {
+      return NextResponse.json({ error: "courseId is required" }, { status: 400 });
+    }
+
+    await deleteCourse(courseId, user.id);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("[courses/delete]", err);
+    const message = err instanceof Error ? err.message : "Unknown error";
+    const status = message === "Course not found" ? 404 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

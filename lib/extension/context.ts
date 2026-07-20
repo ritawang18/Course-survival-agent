@@ -148,7 +148,7 @@ interface DbStudyPlanRow {
 }
 
 interface DbCourseGradeRow {
-  id: string;
+  course_id: string;
   current_percent?: number | null;
   current_letter_grade?: string | null;
   projected_percent?: number | null;
@@ -489,8 +489,8 @@ async function fetchCourseGrade(courseUuid: string): Promise<DbCourseGradeRow | 
   const supabase = getServiceClient();
   const { data } = await supabase
     .from("course_grades")
-    .select("id, current_percent, current_letter_grade, projected_percent, projected_letter_grade")
-    .eq("id", courseUuid)
+    .select("course_id, current_percent, current_letter_grade, projected_percent, projected_letter_grade")
+    .eq("course_id", courseUuid)
     .limit(1);
 
   return data && data.length > 0 ? (data[0] as DbCourseGradeRow) : null;

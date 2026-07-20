@@ -70,6 +70,29 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Syllabus confirm ──────────────────────────────────────────────────
+    if (!courseId) {
+      return NextResponse.json(
+        { error: "courseId is required for syllabus uploads" },
+        { status: 400 }
+      );
+    }
+
+    const supabase = getServiceClient();
+    const { data: courseRow, error: courseLookupError } = await supabase
+      .from("courses")
+      .select("id, course_id")
+      .eq("id", courseId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (courseLookupError) {
+      return NextResponse.json({ error: courseLookupError.message }, { status: 500 });
+    }
+    if (!courseRow) {
+      return NextResponse.json({ error: "Course not found" }, { status: 404 });
+    }
+    const courseTextId = courseRow.course_id as string;
+
     const syllabusData: SyllabusParseResult = {
       deadlines: (extracted.deadlines as SyllabusParseResult["deadlines"]) ?? [],
       weights: (extracted.weights as SyllabusParseResult["weights"]) ?? [],
@@ -88,9 +111,12 @@ export async function POST(req: NextRequest) {
       gradingPolicy: (extracted.gradingPolicy as string) ?? null,
     };
 
-    const syllabusId = await upsertSyllabus(syllabusData);
-    const newCourseId = await upsertCourse(user.id, syllabusId, syllabusData);
-    const assignmentsCreated = await insertSyllabusAssignments(newCourseId, syllabusData);
+    const syllabusId = await upsertSyllabus(syllabusData, courseTextId, courseId);
+    // Refreshes name/instructor/attendance fields on the existing course from
+    // the new parse — the (user_id, course_id) lookup inside upsertCourse
+    // finds the same row we already resolved above, so this updates in place.
+    await upsertCourse(user.id, courseTextId, syllabusData);
+    const assignmentsCreated = await insertSyllabusAssignments(courseId, syllabusData);
 
     // Compile grading policy if present
     if (syllabusData.gradingPolicy) {
@@ -104,7 +130,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      courseId: newCourseId,
+      courseId,
       assignmentsCreated,
     });
   } catch (err) {

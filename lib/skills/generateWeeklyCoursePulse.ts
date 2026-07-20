@@ -34,7 +34,7 @@ interface DbStudyPlanRow {
 }
 
 interface DbCourseGradeRow {
-  id: string;
+  course_id: string;
   current_percent: number | null;
   current_letter_grade: string | null;
   projected_percent: number | null;
@@ -760,8 +760,8 @@ async function gatherContext(
       .maybeSingle(),
     supabase
       .from("course_grades")
-      .select("id, current_percent, current_letter_grade, projected_percent, projected_letter_grade")
-      .eq("id", input.courseUuid)
+      .select("course_id, current_percent, current_letter_grade, projected_percent, projected_letter_grade")
+      .eq("course_id", input.courseUuid)
       .maybeSingle(),
     supabase
       .from("study_plan_blocks")

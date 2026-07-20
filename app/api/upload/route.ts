@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { PDFParse } from "pdf-parse";
 import { parseSyllabus } from "@/lib/parsers/syllabus";
 import { parseAssignment } from "@/lib/parsers/assignment";
-import { getUserFromRequest, getServiceClient } from "@/lib/supabase/server";
-import { upsertSyllabus, upsertCourse } from "@/lib/db/courses";
-import { insertSyllabusAssignments, insertAssignment } from "@/lib/db/assignments";
-import { compileAndStoreGradePolicy } from "@/lib/skills/grade-policy-compiler";
+import { getUserFromRequest } from "@/lib/supabase/server";
 import { requireAIConfig } from "@/lib/ai/client";
 
 export const runtime = "nodejs"; // pdf-parse requires Node.js runtime
@@ -22,7 +19,7 @@ export async function POST(req: NextRequest) {
     const form = await req.formData();
     const file = form.get("file");
     const kind = (form.get("kind") as string) ?? "syllabus"; // "syllabus" | "assignment"
-    // For assignment uploads the frontend must include the course_id
+    // Both upload kinds must be attached to an existing course
     const courseId = form.get("course_id") as string | null;
 
     if (!file || typeof file === "string") {
@@ -90,6 +87,13 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Syllabus upload (parse only — no DB writes) ─────────────────────
+    if (!courseId) {
+      return NextResponse.json(
+        { error: "course_id is required for syllabus uploads" },
+        { status: 400 }
+      );
+    }
+
     const result = await parseSyllabus(rawText, {
       provider: aiConfig.provider,
       model: aiConfig.model,
@@ -103,6 +107,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       kind,
       fileName,
+      courseId,
       extracted: {
         deadlines: result.deadlines,
         weights: result.weights,

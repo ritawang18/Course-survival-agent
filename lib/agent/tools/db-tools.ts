@@ -279,7 +279,7 @@ export const getCourseGradeTool: ToolDefinition<
         const { data, error } = await supabase
             .from("course_grades")
             .select("current_percent, current_letter_grade, projected_percent, projected_letter_grade")
-            .eq("id", args.courseId)
+            .eq("course_id", args.courseId)
             .maybeSingle(); // returns null instead of error if no row found
 
         if (error) throw new Error(`get_course_grade failed: ${error.message}`);

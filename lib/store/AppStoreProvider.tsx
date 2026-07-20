@@ -138,6 +138,7 @@ interface AppStoreValue {
   markAttendance: (courseId: string, attended: boolean) => Promise<void>;
   decrementAttendance: (courseId: string) => Promise<void>;
   undoAttendance: (courseId: string, lastAction: "attended" | "missed") => Promise<void>;
+  deleteCourse: (courseId: string) => Promise<void>;
   setAssignmentStatus: (id: string, status: AssignmentStatus) => Promise<void>;
   updateGradeScore: (
     courseId: string,
@@ -432,6 +433,52 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       }
     },
     [data.courses, pushToast]
+  );
+
+  const deleteCourse = useCallback(
+    async (courseId: string) => {
+      try {
+        const supabase = getSupabaseClient();
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) {
+          pushToast({
+            kind: "error",
+            title: "Could not delete course",
+            description: "You must be signed in.",
+          });
+          return;
+        }
+
+        const res = await fetch("/api/courses", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ courseId }),
+        });
+
+        if (!res.ok) {
+          const { error } = await res.json().catch(() => ({ error: "Failed to delete course" }));
+          throw new Error(error);
+        }
+
+        await refreshData();
+        pushToast({
+          kind: "success",
+          title: "Course deleted",
+          description: "The course and all related data were removed.",
+        });
+      } catch (err) {
+        pushToast({
+          kind: "error",
+          title: "Could not delete course",
+          description: err instanceof Error ? err.message : "Unexpected error",
+        });
+      }
+    },
+    [pushToast, refreshData]
   );
 
   const setAssignmentStatus = useCallback(
@@ -983,6 +1030,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       markAttendance,
       decrementAttendance,
       undoAttendance,
+      deleteCourse,
       setAssignmentStatus,
       updateGradeScore,
       replanStudy,
@@ -1008,6 +1056,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       markAttendance,
       decrementAttendance,
       undoAttendance,
+      deleteCourse,
       setAssignmentStatus,
       updateGradeScore,
       replanStudy,

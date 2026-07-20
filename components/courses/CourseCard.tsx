@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 import { GradeRing } from "@/components/common/GradeRing";
@@ -8,10 +9,11 @@ import { cn } from "@/lib/utils/cn";
 import { useAppStore } from "@/lib/store/AppStoreProvider";
 import type { Course } from "@/lib/store/types";
 import { relativeDue } from "@/lib/utils/date";
-import { CalendarDays, AlertTriangle, ArrowUpRight } from "lucide-react";
+import { CalendarDays, AlertTriangle, ArrowUpRight, Trash2 } from "lucide-react";
 
 export function CourseCard({ course }: { course: Course }) {
-  const { data } = useAppStore();
+  const { data, deleteCourse } = useAppStore();
+  const [deleting, setDeleting] = useState(false);
   const nextDeadline = [...data.assignments]
     .filter((a) => a.course_id === course.id && a.status !== "done" && !!a.due_at)
     .sort((a, b) => new Date(a.due_at!).getTime() - new Date(b.due_at!).getTime())[0];
@@ -25,11 +27,36 @@ export function CourseCard({ course }: { course: Course }) {
   const near = hasPolicy &&
     course.attendance_missed_count >= course.attendance_allowed_misses - 1 && !over;
 
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (deleting) return;
+    const confirmed = window.confirm(
+      `Delete ${course.name}? This permanently removes all its assignments, grades, attendance, and study plan data.`
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    try {
+      await deleteCourse(course.id);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <Link
       href={`/courses/${course.id}`}
-      className="group card-surface hover:shadow-card-hover transition-all block overflow-hidden"
+      className="group card-surface hover:shadow-card-hover transition-all block overflow-hidden relative"
     >
+      <button
+        onClick={handleDelete}
+        disabled={deleting}
+        aria-label={`Delete ${course.name}`}
+        className="absolute top-3 right-3 z-10 h-7 w-7 rounded-lg flex items-center justify-center text-muted opacity-0 group-hover:opacity-100 hover:bg-danger/10 hover:text-danger transition-all disabled:opacity-50"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
       <div className={cn("h-1.5 w-full bg-gradient-to-r", colors.stripe)} />
       <div className="p-5">
         <div className="flex items-start justify-between gap-3">

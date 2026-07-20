@@ -56,7 +56,7 @@ export function UploadZone() {
     const form = new FormData();
     form.append("file", file);
     form.append("kind", kind);
-    if (kind === "assignment" && courseId) {
+    if (courseId) {
       form.append("course_id", courseId);
     }
 
@@ -119,11 +119,11 @@ export function UploadZone() {
   });
 
   const handleFiles = async (files: FileList | File[]) => {
-    if (uploadKind === "assignment" && !selectedCourseId) {
+    if (!selectedCourseId) {
       pushToast({
         kind: "error",
         title: "Choose a course first",
-        description: "Assignment uploads must be attached to an existing course.",
+        description: `${uploadKind === "syllabus" ? "Syllabus" : "Assignment"} uploads must be attached to an existing course.`,
       });
       return;
     }
@@ -132,11 +132,7 @@ export function UploadZone() {
     const arr = Array.from(files);
     for (const file of arr) {
       try {
-        const payload = await uploadFile(
-          file,
-          uploadKind,
-          uploadKind === "assignment" ? selectedCourseId : undefined
-        );
+        const payload = await uploadFile(file, uploadKind, selectedCourseId);
         addUpload(buildArtifact(file, payload));
         await refreshData().catch((err) => {
           console.warn("[upload] refreshData failed", err);
@@ -200,34 +196,32 @@ export function UploadZone() {
           </select>
         </div>
 
-        {uploadKind === "assignment" && (
-          <div>
-            <label className="text-xs font-medium">Course</label>
-            <select
-              value={selectedCourseId}
-              onChange={(e) => setSelectedCourseId(e.target.value)}
-              className="mt-1.5 h-9 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:ring-4 focus:ring-[hsl(var(--accent)/0.12)] focus:border-accent/60"
-              disabled={data.courses.length === 0}
-            >
-              {data.courses.length === 0 ? (
-                <option value="">Upload a syllabus first to create a course</option>
-              ) : (
-                data.courses.map((course) => (
-                  <option key={course.id} value={course.id}>
-                    {course.code ?? course.course_id} · {course.name ?? course.course_name}
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
-        )}
+        <div>
+          <label className="text-xs font-medium">Course</label>
+          <select
+            value={selectedCourseId}
+            onChange={(e) => setSelectedCourseId(e.target.value)}
+            className="mt-1.5 h-9 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:ring-4 focus:ring-[hsl(var(--accent)/0.12)] focus:border-accent/60"
+            disabled={data.courses.length === 0}
+          >
+            {data.courses.length === 0 ? (
+              <option value="">Add a course first</option>
+            ) : (
+              data.courses.map((course) => (
+                <option key={course.id} value={course.id}>
+                  {course.code ?? course.course_id} · {course.name ?? course.course_name}
+                </option>
+              ))
+            )}
+          </select>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 mt-5">
         <Button
           onClick={() => fileRef.current?.click()}
           loading={uploading}
-          disabled={uploadKind === "assignment" && data.courses.length === 0}
+          disabled={data.courses.length === 0}
         >
           <UploadCloud className="h-4 w-4" />
           {uploading ? "Uploading…" : "Choose files"}

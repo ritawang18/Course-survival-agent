@@ -60,7 +60,7 @@ interface DbSyllabusRow {
 }
 
 interface DbCourseGradeRow {
-  id: string;
+  course_id: string;
   current_percent: number | null;
   current_letter_grade: string | null;
   projected_percent: number | null;
@@ -682,8 +682,8 @@ export async function GET(req: NextRequest) {
       resolveOptionalRows<DbCourseGradeRow>(
         supabase
           .from("course_grades")
-          .select("id, current_percent, current_letter_grade, projected_percent, projected_letter_grade")
-          .in("id", courseUuids),
+          .select("course_id, current_percent, current_letter_grade, projected_percent, projected_letter_grade")
+          .in("course_id", courseUuids),
         "course_grades"
       ),
       resolveOptionalRows<DbStudyPlanBlockRow>(
@@ -772,7 +772,7 @@ export async function GET(req: NextRequest) {
       syllabusRows.map((row) => [row.course_id, row] as const)
     );
     const gradesByCourseUuid = new Map(
-      gradeRows.map((row) => [row.id, row] as const)
+      gradeRows.map((row) => [row.course_id, row] as const)
     );
     // studyPlanBlockRows is ordered by date/start_time ascending, so the first
     // row seen per course is its soonest-scheduled block.
